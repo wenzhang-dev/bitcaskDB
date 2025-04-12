@@ -420,6 +420,10 @@ func (wal *Wal) WriteRecord(record []byte) (uint64, error) {
 func (wal *Wal) recordPhysicalSize(offset, size uint64) uint64 {
 	left := size
 	phySize := uint64(0)
+
+	// skip the super block
+	offset -= SuperBlockSize
+
 	for left > 0 {
 		leftover := BlockSize - (offset % BlockSize)
 		if leftover < RecordHeaderSize {

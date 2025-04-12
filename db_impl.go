@@ -3,6 +3,7 @@ package bitcask
 import (
 	"errors"
 	"math/rand"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -109,7 +110,18 @@ func NewDB(opts *Options) (*DBImpl, error) {
 }
 
 func (db *DBImpl) recoverFromWals() error {
+	wals := make([]uint64, 0, len(db.manifest.wals))
 	for fid := range db.manifest.wals {
+		wals = append(wals, fid)
+	}
+
+	// positive order
+	sort.Slice(wals, func(i int, j int) bool {
+		return wals[i] < wals[j]
+	})
+
+	// recover from older wals to newest wals
+	for _, fid := range wals {
 		if err := db.recoverFromWal(fid); err != nil {
 			return err
 		}
@@ -148,6 +160,10 @@ func (db *DBImpl) recoverFromWal(fid uint64) error {
 			return err
 		}
 
+		// the offset returned by the Next method of wal iterator points to the actual start of the data
+		// however, the offset used by ReadRecord of wal is the start of the data header
+		// therefore, the offset is corrected here
+		foff -= RecordHeaderSize
 		err = db.index.Put(record.Ns, record.Key, wal.Fid(), foff, uint64(len(recordBytes)), nil)
 		if err != nil {
 			return err
@@ -371,8 +387,7 @@ func (db *DBImpl) ensureRoomForWrite() error {
 		// don't need to care if it succeeds or not
 		// if it's unsuccessful, it will be cleaned up automatically
 		go func() {
-			err := NewHintByWal(old)
-			print(err)
+			_ = NewHintByWal(old)
 		}()
 	}
 
@@ -410,7 +425,7 @@ func (db *DBImpl) Get(ns, key []byte, opts *ReadOptions) (val []byte, meta *Meta
 	// reach here: read the wal file without any lock
 	recordBytes, err = wal.ReadRecord(off, sz)
 	if err == nil {
-		record, err = RecordFromBytes(recordBytes, wal.CreateTime())
+		record, err = RecordFromBytes(recordBytes, wal.BaseTime())
 		if err == nil {
 			val = record.Value
 			meta = record.Meta

@@ -80,6 +80,7 @@ func NewManifest(dir string) (*Manifest, error) {
 	manifest := &Manifest{
 		dir:     dir,
 		fp:      fp,
+		fid:     1,
 		nextFid: 3,
 		wals:    make(map[uint64]*WalInfo),
 		size:    0,
@@ -126,6 +127,11 @@ func LoadManifest(dir string) (*Manifest, error) {
 		return nil, fmt.Errorf("failed to read CURRENT file: %w", err)
 	}
 
+	ft, fid, err := ParseFilename(string(data))
+	if err != nil || ft != ManifestFileType {
+		return nil, errors.New("invalid CURRENT file")
+	}
+
 	manifestPath := filepath.Join(dir, strings.TrimSpace(string(data)))
 	fp, err := os.OpenFile(manifestPath, os.O_RDWR|os.O_APPEND, 0o644)
 	if err != nil {
@@ -143,6 +149,7 @@ func LoadManifest(dir string) (*Manifest, error) {
 
 	manifest := &Manifest{
 		dir:     dir,
+		fid:     fid,
 		fp:      fp,
 		wals:    make(map[uint64]*WalInfo),
 		nextFid: 0,

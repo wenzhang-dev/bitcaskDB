@@ -171,16 +171,25 @@ func (db *DBImpl) doCompactionWork(compaction *Compaction) {
 	}
 
 	// apply the edit
-	db.mu.Lock()
-	defer db.mu.Unlock()
-	if err := db.manifest.LogAndApply(compaction.edit); err != nil {
-		db.bgErr = err
+	func() {
+		db.mu.Lock()
+		defer db.mu.Unlock()
+		if err := db.manifest.LogAndApply(compaction.edit); err != nil {
+			db.bgErr = err
+		}
+	}()
+
+	if db.bgErr != nil {
 		return
 	}
 
+	// reach here: execute without any lock
+	// the compaction hold the wal reference until the function exits
+
 	// update the index and ignore any error
 	_ = IterateHint(compaction.outputHint, func(ns, key []byte, fid, off, sz uint64) error {
-		return db.index.Put(ns, key, fid, off, sz, nil)
+		_ = db.index.Put(ns, key, fid, off, sz, nil)
+		return nil
 	})
 }
 
@@ -197,7 +206,7 @@ func (db *DBImpl) compactOneWal(dst *Wal, dstHint *HintWal, src *Wal) error {
 			return err
 		}
 
-		record, err := RecordFromBytes(recordBytes, src.CreateTime())
+		record, err := RecordFromBytes(recordBytes, src.BaseTime())
 		if err != nil {
 			return err
 		}
@@ -206,7 +215,7 @@ func (db *DBImpl) compactOneWal(dst *Wal, dstHint *HintWal, src *Wal) error {
 			continue
 		}
 
-		newRecord, err := record.Encode(dst.CreateTime())
+		newRecord, err := record.Encode(dst.BaseTime())
 		if err != nil {
 			return err
 		}

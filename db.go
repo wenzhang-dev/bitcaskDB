@@ -15,10 +15,10 @@ import (
 )
 
 const (
-	WalFileSuffix      = "wal"
-	HintFileSuffix     = "hint"
-	MergeFileSuffix    = "merge"
-	TmpFileSuffix      = "tmp"
+	WalFileSuffix      = ".wal"
+	HintFileSuffix     = ".hint"
+	MergeFileSuffix    = ".merge"
+	TmpFileSuffix      = ".tmp"
 	LockFile           = "LOCK"
 	ManifestFilePrefix = "MANIFEST"
 	CurrentFile        = "CURRENT"
@@ -94,19 +94,19 @@ type DB interface {
 }
 
 func TmpFilename(fid uint64) string {
-	return fmt.Sprintf("%06d.%s", fid, TmpFileSuffix)
+	return fmt.Sprintf("%06d%s", fid, TmpFileSuffix)
 }
 
 func WalFilename(fid uint64) string {
-	return fmt.Sprintf("%06d.%s", fid, WalFileSuffix)
+	return fmt.Sprintf("%06d%s", fid, WalFileSuffix)
 }
 
 func HintFilename(fid uint64) string {
-	return fmt.Sprintf("%06d.%s", fid, HintFileSuffix)
+	return fmt.Sprintf("%06d%s", fid, HintFileSuffix)
 }
 
 func MergeFilename(fid uint64) string {
-	return fmt.Sprintf("%06d.%s", fid, MergeFileSuffix)
+	return fmt.Sprintf("%06d%s", fid, MergeFileSuffix)
 }
 
 func ManifestFilename(fid uint64) string {

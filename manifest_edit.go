@@ -73,8 +73,18 @@ func (edit *ManifestEdit) Encode() []byte {
 	return buf.Bytes()
 }
 
+func (edit *ManifestEdit) Clear() {
+	edit.nextFid = 0
+	edit.hasNextFid = false
+
+	edit.addFiles = nil
+	edit.deleteFiles = nil
+	edit.freeBytes = make(map[uint64]uint64)
+}
+
 func (edit *ManifestEdit) DecodeFrom(data []byte) error {
 	offset := 0
+	edit.Clear()
 	for offset < len(data) {
 		tag, nbytes := binary.Uvarint(data[offset:])
 		if nbytes <= 0 {
