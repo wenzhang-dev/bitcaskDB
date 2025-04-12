@@ -11,7 +11,7 @@ func NewBatch() *Batch {
 	return &Batch{}
 }
 
-func (b *Batch) Put(ns, key []byte, meta *Meta, val []byte) {
+func (b *Batch) Put(ns, key, val []byte, meta *Meta) {
 	record := &Record{
 		Ns:      ns,
 		Key:     key,

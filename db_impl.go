@@ -74,6 +74,10 @@ func NewDB(opts *Options) (*DBImpl, error) {
 
 	randor := rand.New(rand.NewSource(time.Now().Unix()))
 
+	if opts.CompactionPicker == nil {
+		opts.CompactionPicker = DefaultCompactionPicker
+	}
+
 	dbImpl := &DBImpl{
 		opts:       opts,
 		fileLock:   fileLock,
@@ -444,7 +448,7 @@ func (db *DBImpl) Get(ns, key []byte, opts *ReadOptions) (val []byte, meta *Meta
 
 func (db *DBImpl) Put(ns, key, val []byte, meta *Meta, opts *WriteOptions) error {
 	batch := NewBatch()
-	batch.Put(ns, key, meta, val)
+	batch.Put(ns, key, val, meta)
 	return db.Write(batch, opts)
 }
 

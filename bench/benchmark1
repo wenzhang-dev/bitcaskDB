@@ -1,0 +1,10 @@
+go test -bench=PutGet -benchtime=60s
+goos: linux
+goarch: 386
+pkg: github.com/wenzhang-dev/bitcaskDB/bench
+cpu: Intel(R) Xeon(R) Gold 5318N CPU @ 2.10GHz
+BenchmarkPutGet/put-8         	  1981916	     35306 ns/op	    5252 B/op	      23 allocs/op
+BenchmarkPutGet/batchPut-8    	  3571353	     21057 ns/op	     480 B/op	      12 allocs/op
+BenchmarkPutGet/get-8         	  63792931	      1021 ns/op	     128 B/op	       5 allocs/op
+PASS
+ok  	github.com/wenzhang-dev/bitcaskDB/bench	329.457s
