@@ -1,70 +1,61 @@
-<div align="center">
-<strong>
-<samp>
+# bitcaskDB 是什么？
 
-[English](https://github.com/wenzhang-dev/bitcaskDB/blob/main/README.md) · [简体中文](https://github.com/wenzhang-dev/bitcaskDB/blob/main/README-CN.md)
-
-</samp>
-</strong>
-</div>
-
-# What is bitcaskDB
-
-bitcaskDB is a light-weight, fast, fixed capacity key/value storage engine base on bitcask storage model.
+bitcaskDB是一个基于bitcask存储模型的轻量级、快速、固定容量的键值对存储引擎。
 
 
-# Motivation
+# 动机
 
-- limited hardware resources
-- cache tens of millions of small objects
-
-
-# Features
-- append-only
-- fixed-size namespace
-- fixed memory and disk usage
-- fine-grained compaction
-- LRU-like eviction policy in memory
-- customized record metadata
-- customized compaction filter
-- customized compaction picker
-- bulk writes
-- allow expire and value fingerprint(etag)
-- fast recover based on hint wal
-- soft deletion
+- 硬件资源受限，如 4C8G 100G 磁盘
+- 缓存数以千万的小对象
 
 
-# Comparation
+# 特性
+
+- 追加写
+- 固定长度的 namespace
+- 固定磁盘容量和内存用量
+- 细粒度的合并
+- 近似 LRU 淘汰策略
+- 自定义记录的元数据
+- 自定义合并策略
+- 自定义挑选策略
+- 批量写
+- 允许过期时间和数据指纹 Etag
+- 基于 hint 的快速恢复
+- 软删除
+
+# 对比分析
 
 ## LSM
-- append-only
-- multiple disk seek in worst case
-- write amplification
-  - chained compaction
-- range search
-- ordered
-- slow to reclaim disk space
-  - multiple data version
+- 追加写
+- 读操作可能需要多次随机寻址
+- 写放大
+  - 链式合并
+- 范围查询
+- 有序性
+- 回收磁盘空间较慢
+  - 多个数据版本
 
 
 ## B+Tree
-- update-inplace
-- ordered
-- range search
-- hard to reclaim disk space
+- 原地更新
+- 有序性
+- 范围查询
+- 很难回收磁盘空间
 
 
 ## Bitcask
-- append-only
-- predictable lookup and insert performance
-- single seek to retrieve any value
-- fast to reclaim disk space
-  - only one data version in memory
-- multiple data model in memory, such as btree, hashtable
-  - hashtable is more compact, but un-ordered and un-support range search
+- 追加写
+- 明确的查询和插入性能
+- 查询仅需要单次寻址
+- 快速的回收磁盘空间
+  - 内存仅保留最新的数据版本
+- 内存可使用多种数据模型，如 btree，hashtable
+  - hashtable 更加紧凑，但无序，不支持范围查询
+  - btree 支持范围查询，顺序迭代，但内存开销更大
 
 
-# Getting started
+# 快速开始
 
 
 ```golang
