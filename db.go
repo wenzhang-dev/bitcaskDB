@@ -1,6 +1,7 @@
 package bitcask
 
 import (
+	"crypto/sha1"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -255,4 +256,14 @@ func ParseFilename(name string) (fileType int, fid uint64, err error) {
 	}
 
 	return UnknownFileType, 0, nil
+}
+
+func GenSha1NS(ns string) []byte {
+	hash := sha1.Sum([]byte(ns))
+	return hash[:]
+}
+
+func GenSha1Etag(data []byte) []byte {
+	hash := sha1.Sum(data)
+	return hash[:]
 }
