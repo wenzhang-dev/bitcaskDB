@@ -374,6 +374,15 @@ func (m *Manifest) ToWal(fid uint64) *Wal {
 	return nil
 }
 
+func (m *Manifest) ToWalWithRef(fid uint64) *Wal {
+	if info, exists := m.wals[fid]; exists {
+		info.wal.Ref()
+		return info.wal
+	}
+
+	return nil
+}
+
 func (m *Manifest) prepareApply(edit *ManifestEdit) error {
 	wals := make(map[uint64]struct{}, len(m.wals))
 	for k := range m.wals {

@@ -7,6 +7,8 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -58,6 +60,10 @@ type Wal struct {
 	fp    *os.File
 	super *superBlock
 
+	// reference count
+	refs        *atomic.Int64
+	deleterOnce sync.Once
+
 	// internal buffer
 	buf bytes.Buffer
 
@@ -73,11 +79,11 @@ type Wal struct {
 	// the data start position
 	offset uint32
 
-	// reference count
-	refs uint32
-
 	// when the wal is marked immutable, which is not writable
 	immutable bool
+
+	// indicate whether the wal can operate
+	invalid bool
 }
 
 func (wal *Wal) Rename(newName string) error {
@@ -115,8 +121,11 @@ func LoadWal(path string, fid uint64) (*Wal, error) {
 		fid:       fid,
 		size:      uint64(stat.Size()),
 		immutable: false,
-		refs:      1,
+		invalid:   false,
+		refs:      new(atomic.Int64),
 	}
+
+	wal.refs.Store(1)
 
 	wal.super, err = wal.loadSuperBlock()
 	if err != nil {
@@ -155,8 +164,11 @@ func NewWal(path string, fid uint64, baseTime int64) (*Wal, error) {
 		fid:       fid,
 		size:      0,
 		immutable: false,
-		refs:      1,
+		invalid:   false,
+		refs:      new(atomic.Int64),
 	}
+
+	wal.refs.Store(1)
 
 	wal.super, err = wal.writeSuperBlock(uint64(baseTime))
 	if err != nil {
@@ -172,33 +184,31 @@ func NewWal(path string, fid uint64, baseTime int64) (*Wal, error) {
 	return wal, nil
 }
 
+func (wal *Wal) deleteSelf() {
+	wal.invalid = true
+	_ = wal.fp.Close()
+	_ = os.Remove(wal.path)
+}
+
+// thread-safe
 // decrease the reference count
 // delete self when reference count equals zero
 func (wal *Wal) Unref() {
-	if wal.refs <= 0 {
-		return
-	}
-
-	wal.refs--
-	if wal.refs <= 0 {
-		wal.deleteSelf()
+	if wal.refs.Add(-1) == 0 {
+		wal.deleterOnce.Do(wal.deleteSelf)
 	}
 }
 
-func (wal *Wal) deleteSelf() {
-	wal.fp.Close()
-	os.Remove(wal.path)
-}
-
+// thread-safe
 // increase the reference count
 func (wal *Wal) Ref() {
-	if wal.refs >= 1 {
-		wal.refs++
-	}
+	wal.refs.Add(1)
 }
 
+// before read and write wal, usually incr the reference count
+// it makes sure the wal is always valid
 func (wal *Wal) Valid() bool {
-	return wal.refs >= 1
+	return !wal.invalid
 }
 
 func (wal *Wal) writeSuperBlock(baseTime uint64) (*superBlock, error) {
@@ -285,7 +295,7 @@ func (wal *Wal) Freeze() {
 	wal.immutable = true
 }
 
-func (wal *Wal) Writable() bool {
+func (wal *Wal) Immutable() bool {
 	return !wal.immutable
 }
 
@@ -356,7 +366,7 @@ func (wal *Wal) WriteRecord(record []byte) (uint64, error) {
 		return 0, ErrWalUnavailable
 	}
 
-	if !wal.Writable() {
+	if !wal.Immutable() {
 		return 0, ErrWalFrozen
 	}
 

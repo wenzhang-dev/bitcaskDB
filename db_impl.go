@@ -385,6 +385,7 @@ func (db *DBImpl) ensureRoomForWrite() error {
 }
 
 func (db *DBImpl) Get(ns, key []byte, opts *ReadOptions) (val []byte, meta *Meta, err error) {
+	var wal *Wal
 	var record *Record
 	var recordBytes []byte
 
@@ -393,34 +394,31 @@ func (db *DBImpl) Get(ns, key []byte, opts *ReadOptions) (val []byte, meta *Meta
 		return nil, nil, err
 	}
 
-	db.mu.Lock()
-	defer db.mu.Unlock()
+	func() {
+		db.mu.Lock()
+		defer db.mu.Unlock()
 
-	wal := db.manifest.ToWal(fid)
+		// increase the reference to avoid deletion
+		wal = db.manifest.ToWalWithRef(fid)
+	}()
+
 	if wal == nil {
 		return nil, nil, ErrKeyNotFound
 	}
 
-	// increase the reference to avoid deletion
-	wal.Ref()
-	db.mu.Unlock()
+	defer wal.Unref()
 
 	// reach here: read the wal file without any lock
-	recordBytes, err = wal.ReadRecord(off, sz)
-	if err == nil {
-		record, err = RecordFromBytes(recordBytes, wal.BaseTime())
-		if err == nil {
-			val = record.Value
-			meta = record.Meta
-		}
+	if recordBytes, err = wal.ReadRecord(off, sz); err != nil {
+		return nil, nil, errors.Join(err, ErrKeyNotFound)
 	}
 
-	if err != nil {
-		err = errors.Join(err, ErrKeyNotFound)
+	if record, err = RecordFromBytes(recordBytes, wal.BaseTime()); err != nil {
+		return nil, nil, errors.Join(err, ErrKeyNotFound)
 	}
 
-	db.mu.Lock()
-	wal.Unref()
+	val = record.Value
+	meta = record.Meta
 
 	return
 }

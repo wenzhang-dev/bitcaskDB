@@ -179,6 +179,10 @@ func (db *DBImpl) doCompactionWork(compaction *Compaction) {
 
 func (db *DBImpl) compactOneWal(dst *WalRewriter, hintWriter *HintWriter, src *Wal) error {
 	return IterateRecord(src, func(record *Record, foff, _ uint64) error {
+		// the foff points to the start offset of data in the wal
+		// however, the offset used by ReadRecord of wal expects the start offset of data header
+		foff -= RecordHeaderSize
+
 		if db.doFilter(record, src.fid, foff) {
 			return nil
 		}
