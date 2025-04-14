@@ -66,17 +66,17 @@ func TestHint_NewHintByWal(t *testing.T) {
 	defer os.Remove(hintPath)
 
 	itNum := 0
-	err = IterateHint(hint, func(ns, key []byte, fid, off, sz uint64) error {
-		assert.Equal(t, ns, ns1[:])
-		assert.Equal(t, key, []byte("test-key"+strconv.Itoa(itNum)))
+	err = IterateHint(hint, func(hintRecord *HintRecord) error {
+		assert.Equal(t, hintRecord.ns, ns1[:])
+		assert.Equal(t, hintRecord.key, []byte("test-key"+strconv.Itoa(itNum)))
 
-		recordBytes, err := wal.ReadRecord(off, sz)
+		recordBytes, err := wal.ReadRecord(hintRecord.off, hintRecord.size)
 		assert.Nil(t, err)
 
 		readRecord, err := RecordFromBytes(recordBytes, wal.BaseTime())
 		assert.Nil(t, err)
-		assert.Equal(t, readRecord.Ns, ns)
-		assert.Equal(t, readRecord.Key, key)
+		assert.Equal(t, readRecord.Ns, hintRecord.ns)
+		assert.Equal(t, readRecord.Key, hintRecord.key)
 		assert.Equal(t, readRecord.Value, record.Value)
 
 		itNum++

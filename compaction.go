@@ -1,7 +1,6 @@
 package bitcask
 
 import (
-	"errors"
 	"sort"
 )
 
@@ -200,41 +199,25 @@ func (db *DBImpl) doCompactionWork(compaction *Compaction) {
 	// the compaction hold the wal reference until the function exits
 
 	// update the index and ignore any error
-	_ = IterateHint(compaction.hintWriter.Wal(), func(ns, key []byte, fid, off, sz uint64) error {
-		_ = db.index.Put(ns, key, fid, off, sz, nil)
+	_ = IterateHint(compaction.hintWriter.Wal(), func(record *HintRecord) error {
+		_ = db.index.Put(record.ns, record.key, record.fid, record.off, record.size, nil)
 		return nil
 	})
 }
 
 func (db *DBImpl) compactOneWal(dst *WalRewriter, hintWriter *HintWriter, src *Wal) error {
-	it := NewWalIterator(src)
-	defer it.Close()
-
-	for {
-		foff, recordBytes, err := it.Next()
-		if err != nil {
-			if errors.Is(err, ErrWalIteratorEOF) {
-				break
-			}
-			return err
-		}
-
-		record, err := RecordFromBytes(recordBytes, src.BaseTime())
-		if err != nil {
-			return err
-		}
-
+	return IterateRecord(src, func(record *Record, foff uint64) error {
 		if db.doFilter(record, src.fid, foff) {
-			continue
+			return nil
 		}
 
-		newRecord, err := record.Encode(dst.Wal().BaseTime())
+		recordBytes, err := record.Encode(dst.Wal().BaseTime())
 		if err != nil {
 			return err
 		}
 
 		// write dst wal
-		foff, err = dst.AppendRecord(newRecord)
+		foff, err = dst.AppendRecord(recordBytes)
 		if err != nil {
 			return err
 		}
@@ -245,14 +228,10 @@ func (db *DBImpl) compactOneWal(dst *WalRewriter, hintWriter *HintWriter, src *W
 			key:  record.Key,
 			fid:  dst.Wal().Fid(),
 			off:  foff,
-			size: uint64(len(newRecord)),
+			size: uint64(len(recordBytes)),
 		}
-		if err = hintWriter.AppendRecord(hintRecord); err != nil {
-			return err
-		}
-	}
-
-	return nil
+		return hintWriter.AppendRecord(hintRecord)
+	})
 }
 
 func (db *DBImpl) doFilter(srcRecord *Record, srcFid, srcOff uint64) bool {

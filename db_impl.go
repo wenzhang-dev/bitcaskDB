@@ -137,8 +137,8 @@ func (db *DBImpl) recoverFromWals() error {
 func (db *DBImpl) recoverFromWal(fid uint64) error {
 	// prefer hint wal
 	hintPath := HintPath(db.opts.Dir, fid)
-	err := RecoverFromHint(hintPath, fid, func(ns, key []byte, fid, off, sz uint64) error {
-		return db.index.Put(ns, key, fid, off, sz, nil)
+	err := RecoverFromHint(hintPath, fid, func(record *HintRecord) error {
+		return db.index.Put(record.ns, record.key, fid, record.off, record.size, nil)
 	})
 
 	if err == nil {

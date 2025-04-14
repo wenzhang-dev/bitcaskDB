@@ -234,3 +234,29 @@ func RecordFromBytes(data []byte, baseTime uint64) (*Record, error) {
 		Value: value,
 	}, nil
 }
+
+func IterateRecord(wal *Wal, cb func(record *Record, foff uint64) error) error {
+	it := NewWalIterator(wal)
+	defer it.Close()
+
+	for {
+		foff, recordBytes, err := it.Next()
+		if err != nil {
+			if errors.Is(err, ErrWalIteratorEOF) {
+				break
+			}
+			return err
+		}
+
+		record, err := RecordFromBytes(recordBytes, wal.BaseTime())
+		if err != nil {
+			return err
+		}
+
+		if err = cb(record, foff); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}

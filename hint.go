@@ -169,7 +169,7 @@ func NewHintByWal(wal *Wal) error {
 	return writer.Wal().Rename(HintFilename(wal.fid))
 }
 
-func IterateHint(hint *Wal, cb func(ns, key []byte, fid, off, sz uint64) error) error {
+func IterateHint(hint *Wal, cb func(record *HintRecord) error) error {
 	it := NewWalIterator(hint)
 	defer it.Close()
 
@@ -188,7 +188,7 @@ func IterateHint(hint *Wal, cb func(ns, key []byte, fid, off, sz uint64) error) 
 			return err
 		}
 
-		if err = cb(record.ns, record.key, record.fid, record.off, record.size); err != nil {
+		if err = cb(record); err != nil {
 			return err
 		}
 	}
@@ -196,7 +196,7 @@ func IterateHint(hint *Wal, cb func(ns, key []byte, fid, off, sz uint64) error) 
 	return nil
 }
 
-func RecoverFromHint(path string, fid uint64, cb func(ns, key []byte, fid, off, sz uint64) error) error {
+func RecoverFromHint(path string, fid uint64, cb func(record *HintRecord) error) error {
 	hint, err := LoadWal(path, fid)
 	if err != nil {
 		return err
