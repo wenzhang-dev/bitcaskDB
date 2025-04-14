@@ -60,7 +60,7 @@ func TestHint_NewHintByWal(t *testing.T) {
 	assert.Nil(t, err)
 
 	hintPath := HintPath(wal.Dir(), wal.Fid())
-	hint, err := LoadHint(hintPath, wal.Fid())
+	hint, err := LoadWal(hintPath, wal.Fid())
 	assert.Nil(t, err)
 	defer hint.Close()
 	defer os.Remove(hintPath)

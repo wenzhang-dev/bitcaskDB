@@ -9,7 +9,8 @@ type Compaction struct {
 	inputs []*Wal
 
 	output     *Wal
-	outputHint *HintWal
+	writer     *WalRewriter
+	hintWriter *HintWriter
 
 	edit *ManifestEdit
 }
@@ -32,7 +33,7 @@ func NewCompaction(inputs []*Wal, outputFid uint64) (*Compaction, error) {
 		return nil, err
 	}
 
-	outputHint, err := NewHint(TmpPath(dir, outputFid), outputFid, int64(baseTime))
+	writer, err := NewHintWriter(TmpPath(dir, outputFid), outputFid, int64(baseTime))
 	if err != nil {
 		return nil, err
 	}
@@ -47,12 +48,21 @@ func NewCompaction(inputs []*Wal, outputFid uint64) (*Compaction, error) {
 	return &Compaction{
 		inputs:     inputs,
 		output:     outputWal,
-		outputHint: outputHint,
+		hintWriter: writer,
+		writer:     NewWalRewriter(outputWal, 1024*1024), // 1MB
 		edit:       edit,
 	}, nil
 }
 
 func (c *Compaction) Finalize() error {
+	if err := c.writer.Flush(); err == nil {
+		return err
+	}
+
+	if err := c.hintWriter.Flush(); err != nil {
+		return err
+	}
+
 	walName := WalFilename(c.output.Fid())
 	hintName := HintFilename(c.output.Fid())
 
@@ -60,10 +70,13 @@ func (c *Compaction) Finalize() error {
 		return err
 	}
 
-	return c.outputHint.wal.Rename(hintName)
+	return c.hintWriter.Wal().Rename(hintName)
 }
 
 func (c *Compaction) Destroy() {
+	_ = c.hintWriter.Close()
+	_ = c.writer.Close()
+
 	c.output.Unref()
 
 	for idx := range c.inputs {
@@ -158,7 +171,7 @@ func (db *DBImpl) doCompactionWork(compaction *Compaction) {
 
 	for idx := range compaction.inputs {
 		if err := db.compactOneWal(
-			compaction.output, compaction.outputHint, compaction.inputs[idx],
+			compaction.writer, compaction.hintWriter, compaction.inputs[idx],
 		); err != nil {
 			db.bgErr = err
 			return
@@ -187,13 +200,13 @@ func (db *DBImpl) doCompactionWork(compaction *Compaction) {
 	// the compaction hold the wal reference until the function exits
 
 	// update the index and ignore any error
-	_ = IterateHint(compaction.outputHint, func(ns, key []byte, fid, off, sz uint64) error {
+	_ = IterateHint(compaction.hintWriter.Wal(), func(ns, key []byte, fid, off, sz uint64) error {
 		_ = db.index.Put(ns, key, fid, off, sz, nil)
 		return nil
 	})
 }
 
-func (db *DBImpl) compactOneWal(dst *Wal, dstHint *HintWal, src *Wal) error {
+func (db *DBImpl) compactOneWal(dst *WalRewriter, hintWriter *HintWriter, src *Wal) error {
 	it := NewWalIterator(src)
 	defer it.Close()
 
@@ -215,13 +228,13 @@ func (db *DBImpl) compactOneWal(dst *Wal, dstHint *HintWal, src *Wal) error {
 			continue
 		}
 
-		newRecord, err := record.Encode(dst.BaseTime())
+		newRecord, err := record.Encode(dst.Wal().BaseTime())
 		if err != nil {
 			return err
 		}
 
 		// write dst wal
-		foff, err = dst.WriteRecord(newRecord)
+		foff, err = dst.AppendRecord(newRecord)
 		if err != nil {
 			return err
 		}
@@ -230,11 +243,11 @@ func (db *DBImpl) compactOneWal(dst *Wal, dstHint *HintWal, src *Wal) error {
 		hintRecord := &HintRecord{
 			ns:   record.Ns,
 			key:  record.Key,
-			fid:  dst.Fid(),
+			fid:  dst.Wal().Fid(),
 			off:  foff,
 			size: uint64(len(newRecord)),
 		}
-		if err = dstHint.AppendRecord(hintRecord); err != nil {
+		if err = hintWriter.AppendRecord(hintRecord); err != nil {
 			return err
 		}
 	}

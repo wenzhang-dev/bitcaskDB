@@ -16,7 +16,8 @@ type HintRecord struct {
 }
 
 const (
-	minHintRecordSize = NsSize + 1 + 1 + 1*3
+	minHintRecordSize       = NsSize + 1 + 1 + 1*3
+	hintWalRewriterThrehold = 1024 * 1024 // 1MB
 )
 
 var ErrCorruptedHintRecord = errors.New("corrupted hint record")
@@ -24,7 +25,7 @@ var ErrCorruptedHintRecord = errors.New("corrupted hint record")
 // format:
 // | ns | key-size | key | fid | off | size |
 //
-// ns: fixed-size hex string
+// ns: fixed-size string
 // key-size: varint64
 // fid: varint64
 // off: varint64
@@ -81,79 +82,52 @@ func (r *HintRecord) Decode(data []byte) error {
 	return nil
 }
 
-type HintWal struct {
-	wal *Wal
-
-	bufLen int
+type HintWriter struct {
+	rewriter *WalRewriter
 }
 
-func LoadHint(path string, fid uint64) (*HintWal, error) {
-	hint, err := LoadWal(path, fid)
-	if err != nil {
-		return nil, err
-	}
-
-	return &HintWal{
-		wal:    hint,
-		bufLen: 0,
-	}, nil
-}
-
-func NewHint(path string, fid uint64, baseTime int64) (*HintWal, error) {
+func NewHintWriter(path string, fid uint64, baseTime int64) (*HintWriter, error) {
 	hint, err := NewWal(path, fid, baseTime)
 	if err != nil {
 		return nil, err
 	}
 
-	return &HintWal{
-		wal:    hint,
-		bufLen: 0,
+	return &HintWriter{
+		rewriter: NewWalRewriter(hint, hintWalRewriterThrehold),
 	}, nil
 }
 
-func (h *HintWal) AppendRecord(record *HintRecord) error {
+func (w *HintWriter) AppendRecord(record *HintRecord) error {
 	recordBytes, err := record.Encode()
 	if err != nil {
 		return err
 	}
 
-	_, err = h.wal.WriteRecord(recordBytes)
-	if err != nil {
-		return err
-	}
-
-	h.bufLen += len(recordBytes)
-	if h.bufLen >= (1 << 20) { // 1 MB
-		if err = h.wal.Flush(); err != nil {
-			return err
-		}
-		h.bufLen = 0
-	}
-
-	return nil
+	_, err = w.rewriter.AppendRecord(recordBytes)
+	return err
 }
 
-func (h *HintWal) Flush() error {
-	if h.bufLen == 0 {
-		return nil
-	}
-
-	return h.wal.Flush()
+func (w *HintWriter) Wal() *Wal {
+	return w.rewriter.wal
 }
 
-func (h *HintWal) Close() error {
-	return h.wal.Close()
+func (w *HintWriter) Close() error {
+	return w.rewriter.Close()
+}
+
+func (w *HintWriter) Flush() error {
+	return w.rewriter.Flush()
 }
 
 func NewHintByWal(wal *Wal) error {
 	// hint wal use the same fid and base time
 	hintPath := TmpPath(wal.Dir(), wal.fid)
-	hint, err := NewHint(hintPath, wal.fid, int64(wal.BaseTime()))
+	writer, err := NewHintWriter(hintPath, wal.fid, int64(wal.BaseTime()))
 	if err != nil {
 		return err
 	}
 
-	defer hint.Close()
+	defer writer.Close()
 
 	it := NewWalIterator(wal)
 	defer it.Close()
@@ -186,17 +160,17 @@ func NewHintByWal(wal *Wal) error {
 		// however, the offset used by ReadRecord of wal is the start of the data header
 		// therefore, the offset is corrected here
 		hintRecord.off -= RecordHeaderSize
-		if err = hint.AppendRecord(hintRecord); err != nil {
+		if err = writer.AppendRecord(hintRecord); err != nil {
 			return err
 		}
 	}
 
 	// rename hint file
-	return hint.wal.Rename(HintFilename(wal.fid))
+	return writer.Wal().Rename(HintFilename(wal.fid))
 }
 
-func IterateHint(hint *HintWal, cb func(ns, key []byte, fid, off, sz uint64) error) error {
-	it := NewWalIterator(hint.wal)
+func IterateHint(hint *Wal, cb func(ns, key []byte, fid, off, sz uint64) error) error {
+	it := NewWalIterator(hint)
 	defer it.Close()
 
 	var err error
@@ -223,7 +197,7 @@ func IterateHint(hint *HintWal, cb func(ns, key []byte, fid, off, sz uint64) err
 }
 
 func RecoverFromHint(path string, fid uint64, cb func(ns, key []byte, fid, off, sz uint64) error) error {
-	hint, err := LoadHint(path, fid)
+	hint, err := LoadWal(path, fid)
 	if err != nil {
 		return err
 	}
