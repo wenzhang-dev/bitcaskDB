@@ -145,36 +145,15 @@ func (db *DBImpl) recoverFromWal(fid uint64) error {
 		return nil
 	}
 
-	// use wal
+	// use the original wal
 	wal := db.manifest.wals[fid].wal
-	it := NewWalIterator(wal)
-	defer it.Close()
-
-	for {
-		foff, recordBytes, err := it.Next()
-		if err != nil {
-			if errors.Is(err, ErrWalIteratorEOF) {
-				break
-			}
-			return err
-		}
-
-		record, err := RecordFromBytes(recordBytes, wal.BaseTime())
-		if err != nil {
-			return err
-		}
-
-		// the offset returned by the Next method of wal iterator points to the actual start of the data
-		// however, the offset used by ReadRecord of wal is the start of the data header
-		// therefore, the offset is corrected here
+	return IterateRecord(wal, func(record *Record, foff, size uint64) error {
+		// the foff points to the start offset of data in the wal
+		// however, the offset used by ReadRecord of wal expects the start offset of data header
 		foff -= RecordHeaderSize
-		err = db.index.Put(record.Ns, record.Key, wal.Fid(), foff, uint64(len(recordBytes)), nil)
-		if err != nil {
-			return err
-		}
-	}
 
-	return nil
+		return db.index.Put(record.Ns, record.Key, wal.Fid(), foff, size, nil)
+	})
 }
 
 func (db *DBImpl) doBackgroundTask() {

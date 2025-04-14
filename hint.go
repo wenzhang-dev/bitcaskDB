@@ -137,7 +137,8 @@ func NewHintByWal(wal *Wal) error {
 	var record *Record
 
 	for {
-		if foff, recordBytes, err = it.Next(); err != nil {
+		// hint record should point to the start offset of data header
+		if foff, recordBytes, err = it.NextWithoutHeaderOffset(); err != nil {
 			if errors.Is(err, ErrWalIteratorEOF) {
 				break
 			}
@@ -156,10 +157,6 @@ func NewHintByWal(wal *Wal) error {
 			size: uint64(len(recordBytes)),
 		}
 
-		// the offset in HintRecord points to the actual start of the data
-		// however, the offset used by ReadRecord of wal is the start of the data header
-		// therefore, the offset is corrected here
-		hintRecord.off -= RecordHeaderSize
 		if err = writer.AppendRecord(hintRecord); err != nil {
 			return err
 		}

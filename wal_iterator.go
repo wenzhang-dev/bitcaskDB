@@ -35,7 +35,8 @@ func (i *WalIterator) fd() int {
 	return int(i.wal.fp.Fd())
 }
 
-// each time read one block size
+// try to read a block unless there is less than one block left
+// the Next method will return the start offset of data in wal file, and the data itself
 func (i *WalIterator) Next() (uint64, []byte, error) {
 	var off uint64
 	var record []byte
@@ -96,4 +97,16 @@ func (i *WalIterator) Next() (uint64, []byte, error) {
 	}
 
 	return 0, nil, i.err
+}
+
+// the functionality is same to Next, except that the offset does not contain wal header
+// it's useful for the hint generation
+func (i *WalIterator) NextWithoutHeaderOffset() (uint64, []byte, error) {
+	off, data, err := i.Next()
+	if err != nil {
+		return 0, nil, err
+	}
+
+	off -= RecordHeaderSize
+	return off, data, nil
 }

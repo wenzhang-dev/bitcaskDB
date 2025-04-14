@@ -1,9 +1,5 @@
 package bitcask
 
-import (
-	"sort"
-)
-
 type Compaction struct {
 	inputs []*Wal
 
@@ -81,30 +77,6 @@ func (c *Compaction) Destroy() {
 	for idx := range c.inputs {
 		c.inputs[idx].Unref()
 	}
-}
-
-func DefaultCompactionPicker(wals []PickerWalInfo) []uint64 {
-	// reverse order
-	sort.Slice(wals, func(i, j int) bool {
-		return wals[i].FreeBytes > wals[j].FreeBytes
-	})
-
-	var res []uint64
-	for idx := range wals {
-		size := float64(wals[idx].WalSize)
-		free := float64(wals[idx].FreeBytes)
-
-		if free/size < CompactionPickerRatio {
-			break
-		}
-
-		res = append(res, wals[idx].Fid)
-		if len(res) >= 2 {
-			break
-		}
-	}
-
-	return res
 }
 
 func (db *DBImpl) maybeScheduleCompaction() {
@@ -206,7 +178,7 @@ func (db *DBImpl) doCompactionWork(compaction *Compaction) {
 }
 
 func (db *DBImpl) compactOneWal(dst *WalRewriter, hintWriter *HintWriter, src *Wal) error {
-	return IterateRecord(src, func(record *Record, foff uint64) error {
+	return IterateRecord(src, func(record *Record, foff, _ uint64) error {
 		if db.doFilter(record, src.fid, foff) {
 			return nil
 		}

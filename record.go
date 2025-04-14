@@ -235,7 +235,8 @@ func RecordFromBytes(data []byte, baseTime uint64) (*Record, error) {
 	}, nil
 }
 
-func IterateRecord(wal *Wal, cb func(record *Record, foff uint64) error) error {
+// Iterate the specific wal and the callback will pass record, offset and data size
+func IterateRecord(wal *Wal, cb func(record *Record, foff, size uint64) error) error {
 	it := NewWalIterator(wal)
 	defer it.Close()
 
@@ -253,7 +254,7 @@ func IterateRecord(wal *Wal, cb func(record *Record, foff uint64) error) error {
 			return err
 		}
 
-		if err = cb(record, foff); err != nil {
+		if err = cb(record, foff, uint64(len(recordBytes))); err != nil {
 			return err
 		}
 	}
