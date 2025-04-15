@@ -54,7 +54,9 @@ type DBImpl struct {
 	bgErr    error
 
 	compacting *atomic.Bool
-	wallTime   *atomic.Int64
+	compaction *Compaction
+
+	wallTime *atomic.Int64
 
 	// hint wal file is immutable
 	// the cache used to estimate total size of database

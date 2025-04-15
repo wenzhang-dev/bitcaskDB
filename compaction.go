@@ -3,7 +3,9 @@ package bitcask
 import (
 	"errors"
 	"os"
+	"slices"
 	"sort"
+	"sync"
 )
 
 type Compaction struct {
@@ -14,6 +16,8 @@ type Compaction struct {
 	hintWriter *HintWriter
 
 	edit *ManifestEdit
+
+	mu sync.RWMutex
 }
 
 func NewCompaction(inputs []*Wal, outputFid uint64) (*Compaction, error) {
@@ -57,6 +61,9 @@ func NewCompaction(inputs []*Wal, outputFid uint64) (*Compaction, error) {
 }
 
 func (c *Compaction) Finalize() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	var err error
 	if err = c.writer.Flush(); err != nil {
 		return err
@@ -86,6 +93,9 @@ func (c *Compaction) Finalize() error {
 }
 
 func (c *Compaction) Destroy() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	_ = c.hintWriter.Close()
 	_ = c.writer.Close()
 
@@ -147,6 +157,8 @@ func (db *DBImpl) backgroundCompactionLocked(wals []uint64) {
 		return
 	}
 
+	db.compaction = compaction
+
 	// run compaction without any lock
 	go db.doCompactionWork(compaction)
 }
@@ -182,6 +194,8 @@ func (db *DBImpl) doCompactionWork(compaction *Compaction) {
 
 		// clean un-used files
 		_ = db.manifest.CleanFiles(false)
+
+		db.compaction = nil
 	}()
 
 	if db.bgErr != nil {
@@ -252,6 +266,25 @@ func (db *DBImpl) doFilter(srcRecord *Record, srcFid, srcOff uint64) bool {
 	return false
 }
 
+func (db *DBImpl) getCompactionWalsLocked() []uint64 {
+	if !db.compacting.Load() || db.compaction == nil {
+		return nil
+	}
+
+	c := db.compaction
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	wals := make([]uint64, 0, len(c.inputs)+1)
+	wals = append(wals, c.output.Fid())
+
+	for idx := range c.inputs {
+		wals = append(wals, c.inputs[idx].Fid())
+	}
+
+	return wals
+}
+
 func (db *DBImpl) reclaimDiskUsage(expect int64) {
 	db.mu.Lock()
 	defer db.mu.Unlock()
@@ -266,9 +299,14 @@ func (db *DBImpl) reclaimDiskUsage(expect int64) {
 		return
 	}
 
-	// FIXME: exclude the compation input wals
+	compactionWals := db.getCompactionWalsLocked()
 	files := make([]LogFile, len(db.manifest.wals))
 	for fid := range db.manifest.wals {
+		// exclude the compation wals
+		if slices.Contains(compactionWals, fid) {
+			continue
+		}
+
 		files = append(files, LogFile{
 			fid: fid,
 			wal: db.manifest.wals[fid].wal,
