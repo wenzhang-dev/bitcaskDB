@@ -33,8 +33,9 @@ func NewCompaction(inputs []*Wal, outputFid uint64) (*Compaction, error) {
 		return nil, err
 	}
 
+	// the compaction may generate an empty wal, which don't have to keep it
 	edit := &ManifestEdit{
-		addFiles:    []LogFile{{outputWal, outputFid}},
+		addFiles:    nil,
 		deleteFiles: deleteFiles,
 		hasNextFid:  true,
 		nextFid:     outputFid + 1,
@@ -50,18 +51,28 @@ func NewCompaction(inputs []*Wal, outputFid uint64) (*Compaction, error) {
 }
 
 func (c *Compaction) Finalize() error {
-	if err := c.writer.Flush(); err == nil {
+	var err error
+	if err = c.writer.Flush(); err != nil {
 		return err
 	}
 
-	if err := c.hintWriter.Flush(); err != nil {
+	if err = c.hintWriter.Flush(); err != nil {
 		return err
+	}
+
+	// corner case: empty output wal
+	// otherwise, we should add the output wal to manifest
+	if c.output.Size() != SuperBlockSize {
+		c.edit.addFiles = append(c.edit.addFiles, LogFile{
+			wal: c.output,
+			fid: c.output.Fid(),
+		})
 	}
 
 	walName := WalFilename(c.output.Fid())
 	hintName := HintFilename(c.output.Fid())
 
-	if err := c.output.Rename(walName); err != nil {
+	if err = c.output.Rename(walName); err != nil {
 		return err
 	}
 
@@ -154,13 +165,17 @@ func (db *DBImpl) doCompactionWork(compaction *Compaction) {
 		return
 	}
 
-	// apply the edit
 	func() {
 		db.mu.Lock()
 		defer db.mu.Unlock()
+
+		// apply the edit
 		if err := db.manifest.LogAndApply(compaction.edit); err != nil {
 			db.bgErr = err
 		}
+
+		// clean un-used files
+		_ = db.manifest.CleanFiles(false)
 	}()
 
 	if db.bgErr != nil {

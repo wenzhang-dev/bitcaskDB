@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 )
@@ -183,29 +183,26 @@ func (m *Manifest) recoverFromManifest() error {
 		return err
 	}
 
-	deleteFiles := edit.deleteFiles
-	sort.Slice(deleteFiles, func(i, j int) bool {
-		return deleteFiles[i].fid < deleteFiles[j].fid
-	})
+	// positive order
+	deleteFids := make([]uint64, 0, len(edit.deleteFiles))
+	for idx := range edit.deleteFiles {
+		deleteFids = append(deleteFids, edit.deleteFiles[idx].fid)
+	}
+	slices.Sort(deleteFids)
 
-	var found bool
 	var addFiles []LogFile
 	for idx := range edit.addFiles {
-		_, found = sort.Find(len(deleteFiles), func(i int) int {
-			return int(edit.addFiles[idx].fid) - int(deleteFiles[i].fid)
-		})
-
-		if !found {
+		if !slices.Contains(deleteFids, edit.addFiles[idx].fid) {
 			addFiles = append(addFiles, edit.addFiles[idx])
 		}
 	}
 
-	// hit all delete wals
-	if len(addFiles)+len(deleteFiles) != len(edit.addFiles) {
+	// in recover, all delete files should be included in edit.addFiles
+	if len(deleteFids)+len(addFiles) != len(edit.addFiles) {
 		return ErrCorruptedManifest
 	}
 
-	// optimize the edit and load related wals
+	// load related wals
 	for idx := range addFiles {
 		wal, err := LoadWal(WalPath(m.dir, addFiles[idx].fid), addFiles[idx].fid)
 		if err != nil {
@@ -215,7 +212,8 @@ func (m *Manifest) recoverFromManifest() error {
 		addFiles[idx].wal = wal
 	}
 
-	// only add files and delete files should be empty in recover
+	// optimize the edit
+	// deleteFiles should be empty in recover
 	edit.addFiles = addFiles
 	edit.deleteFiles = nil
 
@@ -234,6 +232,7 @@ func (m *Manifest) RotateWal() (old *Wal, err error) {
 	if err != nil {
 		return nil, err
 	}
+
 	defer wal.Unref()
 
 	edit := &ManifestEdit{
@@ -278,8 +277,8 @@ func (m *Manifest) RotateManifest() error {
 		edit.addFiles = append(edit.addFiles, LogFile{fid: fid})
 	}
 
-	content := edit.Encode()
-	if _, err = fp.Write(content); err != nil {
+	nbytes, err := m.persistManifestEdit(fp, edit)
+	if err != nil {
 		return err
 	}
 
@@ -288,11 +287,14 @@ func (m *Manifest) RotateManifest() error {
 		return err
 	}
 
-	m.fp.Close()
+	_ = m.fp.Close()
+	oldMainfestPath := ManifestPath(m.dir, m.fid)
+	_ = os.Remove(oldMainfestPath)
+
 	m.fp = fp
 	m.fid = m.nextFid
 	m.nextFid++
-	m.size = uint64(len(content))
+	m.size = nbytes
 
 	// abort all functors
 	runners.Rollback()
@@ -305,10 +307,12 @@ func (m *Manifest) FileSize() uint64 {
 	return m.size
 }
 
-// clean the un-used wal files
-// maybe include the previous wal logs after compaction
-// clean all files that the MANIFEST doesn't referece
-func (m *Manifest) CleanFiles() error {
+// clean the un-used files
+// if force is true, all un-reference files will be removed
+//
+// usually, when the database bootstrap, force can be true
+// for other situations, the force should be false
+func (m *Manifest) CleanFiles(force bool) error {
 	files, err := os.ReadDir(m.dir)
 	if err != nil {
 		return err
@@ -329,30 +333,29 @@ func (m *Manifest) CleanFiles() error {
 		case CurrentFileType:
 			// skip
 		case WalFileType:
-			fallthrough
+			// wal not found, maybe others are in use
+			if _, exists := m.wals[fid]; !exists {
+				needDelete = force
+			}
 		case HintFileType:
-			// wal and hint file
+			// wal not found, hint should be removed
 			if _, exists := m.wals[fid]; !exists {
 				needDelete = true
 			}
 		case TmpFileType:
 			fallthrough
 		case MergeFileType:
-			// tmp and merge file
-			needDelete = true
+			// tmp and merge file maybe in use
+			needDelete = force
 		case ManifestFileType:
 			// old manifest should be deleted
-			needDelete = (fid != m.fid)
+			needDelete = (fid != m.fid) && force
 		default:
 			// skip unknown file type
 		}
 
 		if needDelete {
-			os.Remove(filepath.Join(m.dir, name))
-		}
-
-		if name == LockFile || name == CurrentFile {
-			continue
+			_ = os.Remove(filepath.Join(m.dir, name))
 		}
 	}
 
@@ -445,6 +448,17 @@ func (m *Manifest) apply(edit *ManifestEdit) {
 	}
 }
 
+func (m *Manifest) applyFreeBytes(delta map[uint64]uint64) {
+	for fid := range delta {
+		if _, exists := m.wals[fid]; !exists {
+			continue
+		}
+
+		m.wals[fid].freeBytes += delta[fid]
+		m.wals[fid].deltaFreeBytes = 0
+	}
+}
+
 // apply one edit and persist it
 func (m *Manifest) LogAndApply(edit *ManifestEdit) error {
 	var err error
@@ -452,62 +466,52 @@ func (m *Manifest) LogAndApply(edit *ManifestEdit) error {
 		return err
 	}
 
-	// every time an edit is persisted, all delta free bytes are appended
-	runners := NewReverseRunner()
-	defer runners.Do()
-
+	// try to append delta free bytes of other wals
+	// FIXME: only append delta free bytes large enough
+	deltaBytes := make(map[uint64]uint64)
+	for fid := range edit.freeBytes {
+		deltaBytes[fid] = edit.freeBytes[fid]
+	}
 	for fid := range m.wals {
-		// FIXME: when delta free bytes large enough and persist it
-		if m.wals[fid].deltaFreeBytes != 0 {
-			edit.freeBytes[fid] += m.wals[fid].deltaFreeBytes
-
-			runners.Post(func() {
-				m.wals[fid].freeBytes += edit.freeBytes[fid]
-				m.wals[fid].deltaFreeBytes = 0
-			})
-		}
+		deltaBytes[fid] += m.wals[fid].deltaFreeBytes
 	}
 
-	content := edit.Encode()
-	if err = m.appendManifest(content); err != nil {
+	edit.freeBytes = deltaBytes
+	nbytes, err := m.persistManifestEdit(m.fp, edit)
+	if err != nil {
 		return err
 	}
 
-	if err = m.fp.Sync(); err != nil {
-		return err
-	}
-
-	// reach here: this edit can apply without any error
+	m.size += nbytes
 
 	edit.freeBytes = nil
 	m.apply(edit)
 
-	// commit the runners
-	runners.Commit()
+	m.applyFreeBytes(deltaBytes)
 
 	return nil
 }
 
-func (m *Manifest) appendManifest(data []byte) error {
+func (m *Manifest) persistManifestEdit(fp *os.File, edit *ManifestEdit) (uint64, error) {
 	var err error
 	var nbytes int
-	totalWrite := 0
-	expectWrite := len(data)
 
-	for totalWrite < expectWrite {
-		nbytes, err = m.fp.Write(data[totalWrite:])
-		totalWrite += nbytes
+	content := edit.Encode()
+	currentBytes := 0
+	expectBytes := len(content)
 
-		if err != nil {
-			break
-		}
+	for currentBytes < expectBytes && err == nil {
+		nbytes, err = fp.Write(content[currentBytes:])
+		currentBytes += nbytes
 	}
 
-	m.size += uint64(expectWrite)
-	return err
+	if err == nil {
+		err = fp.Sync()
+	}
+
+	return uint64(currentBytes), err
 }
 
-// close the related files
 func (m *Manifest) Close() error {
 	for _, info := range m.wals {
 		if info != nil && info.wal != nil {

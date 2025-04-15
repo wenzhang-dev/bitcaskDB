@@ -68,7 +68,7 @@ func NewDB(opts *Options) (*DBImpl, error) {
 		return nil, errors.Join(err, ErrLoadManifest)
 	}
 
-	if err = manifest.CleanFiles(); err != nil {
+	if err = manifest.CleanFiles(true); err != nil {
 		return nil, errors.Join(err, ErrCleanDB)
 	}
 

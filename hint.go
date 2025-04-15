@@ -129,37 +129,23 @@ func NewHintByWal(wal *Wal) error {
 
 	defer writer.Close()
 
-	it := NewWalIterator(wal)
-	defer it.Close()
-
-	var foff uint64
-	var recordBytes []byte
-	var record *Record
-
-	for {
-		// hint record should point to the start offset of data header
-		if foff, recordBytes, err = it.NextWithoutHeaderOffset(); err != nil {
-			if errors.Is(err, ErrWalIteratorEOF) {
-				break
-			}
-			return err
-		}
-
-		if record, err = RecordFromBytes(recordBytes, wal.BaseTime()); err != nil {
-			return err
-		}
+	err = IterateRecord(wal, func(record *Record, foff, size uint64) error {
+		// the foff points to the start offset of data in the wal
+		// however, the offset used by ReadRecord of wal expects the start offset of data header
+		foff -= RecordHeaderSize
 
 		hintRecord := &HintRecord{
 			ns:   record.Ns,
 			key:  record.Key,
 			fid:  wal.fid,
 			off:  foff,
-			size: uint64(len(recordBytes)),
+			size: size,
 		}
 
-		if err = writer.AppendRecord(hintRecord); err != nil {
-			return err
-		}
+		return writer.AppendRecord(hintRecord)
+	})
+	if err != nil {
+		return err
 	}
 
 	// rename hint file
