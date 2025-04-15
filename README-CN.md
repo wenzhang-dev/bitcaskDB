@@ -75,19 +75,20 @@ const data = `
 
 func main() {
     opts := &bitcask.Options{
-	    Dir:                       "./bitcaskDB",
-	    WalMaxSize:                1024 * 1024 * 1024, // 1GB
-	    ManifestMaxSize:           1024 * 1024, // 1MB
-	    IndexCapacity:             10000000, // 10 million
-	    IndexLimited:              8000000,
-	    IndexEvictionPoolCapacity: 32,
-	    IndexSampleKeys:           5,
-	}
+        Dir:                       "./bitcaskDB",
+        WalMaxSize:                1024 * 1024 * 1024, // 1GB
+        ManifestMaxSize:           1024 * 1024, // 1MB
+        IndexCapacity:             10000000, // 10 million
+        IndexLimited:              8000000,
+        IndexEvictionPoolCapacity: 32,
+        IndexSampleKeys:           5,
+        DiskUsageLimited:          1024 * 1024 * 1024 * 100, // 100GB
+    }
 
     db, err := bitcask.NewDB(opts)
     if err != nil {
-	    panic(err)
-	}
+        panic(err)
+    }
     defer func() {
         _ = db.Close()
     }()
