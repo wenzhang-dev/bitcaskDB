@@ -1,5 +1,11 @@
 package bitcask
 
+import (
+	"errors"
+	"os"
+	"sort"
+)
+
 type Compaction struct {
 	inputs []*Wal
 
@@ -125,10 +131,10 @@ func (db *DBImpl) maybeScheduleCompaction() {
 		return
 	}
 
-	db.backgroundCompaction(filterdWals)
+	db.backgroundCompactionLocked(filterdWals)
 }
 
-func (db *DBImpl) backgroundCompaction(wals []uint64) {
+func (db *DBImpl) backgroundCompactionLocked(wals []uint64) {
 	inputs := make([]*Wal, len(wals))
 	for idx := range wals {
 		inputs[idx] = db.manifest.wals[wals[idx]].wal
@@ -244,4 +250,98 @@ func (db *DBImpl) doFilter(srcRecord *Record, srcFid, srcOff uint64) bool {
 
 	// the key should be retained
 	return false
+}
+
+func (db *DBImpl) reclaimDiskUsage(expect int64) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	usage, err := db.approximateDiskUsageLocked()
+	if err != nil {
+		db.bgErr = errors.Join(err, ErrDiskOutOfLimit)
+		return
+	}
+
+	if usage <= expect {
+		return
+	}
+
+	// FIXME: exclude the compation input wals
+	files := make([]LogFile, len(db.manifest.wals))
+	for fid := range db.manifest.wals {
+		files = append(files, LogFile{
+			fid: fid,
+			wal: db.manifest.wals[fid].wal,
+		})
+	}
+
+	// sort by create time in positive order
+	sort.Slice(files, func(i int, j int) bool {
+		return files[i].wal.CreateTime() < files[j].wal.CreateTime()
+	})
+
+	idx := 0
+	var deleteFiles []LogFile
+
+	// reclaim the old wals
+	for usage > expect && idx < len(files) {
+		usage -= int64(files[idx].wal.Size())
+		deleteFiles = append(deleteFiles, files[idx])
+
+		idx++
+	}
+
+	if len(deleteFiles) == 0 {
+		db.bgErr = ErrDiskOutOfLimit
+		return
+	}
+
+	// apply the edit
+	edit := &ManifestEdit{
+		deleteFiles: deleteFiles,
+	}
+
+	if err = db.manifest.LogAndApply(edit); err != nil {
+		db.bgErr = errors.Join(err, ErrDiskOutOfLimit)
+	}
+}
+
+// the method estimates total size of database
+// warning: the return size includes the total size of database reference files
+func (db *DBImpl) approximateDiskUsageLocked() (int64, error) {
+	var usage int64
+
+	fileSize := func(path string) int64 {
+		fi, err := os.Stat(path)
+		if err != nil {
+			return 0
+		}
+		return fi.Size()
+	}
+
+	// manifest file size
+	usage += int64(db.manifest.FileSize())
+
+	// hint and wal file size
+	for fid, info := range db.manifest.wals {
+		usage += int64(info.wal.Size())
+
+		hintSize, exists := db.hintSizeCache[fid]
+		if !exists {
+			hintSize = fileSize(HintPath(db.manifest.dir, fid))
+			if hintSize != 0 {
+				db.hintSizeCache[fid] = hintSize
+			}
+		}
+		usage += hintSize
+	}
+
+	// remove the un-used hint cache items
+	for fid := range db.hintSizeCache {
+		if _, exists := db.manifest.wals[fid]; !exists {
+			delete(db.hintSizeCache, fid)
+		}
+	}
+
+	return usage, nil
 }

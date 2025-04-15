@@ -84,6 +84,8 @@ type Options struct {
 
 	CompactionPicker CompactionPicker
 	CompactionFilter CompactionFilter
+
+	DiskUsageLimited int64
 }
 
 type DB interface {

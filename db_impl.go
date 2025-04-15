@@ -3,7 +3,7 @@ package bitcask
 import (
 	"errors"
 	"math/rand"
-	"sort"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,11 +12,12 @@ import (
 )
 
 var (
-	ErrLockDB       = errors.New("lock database")
-	ErrLoadManifest = errors.New("load manifest file")
-	ErrCleanDB      = errors.New("clean database")
-	ErrRecoverDB    = errors.New("recover database")
-	ErrNewIndex     = errors.New("new index")
+	ErrLockDB         = errors.New("lock database")
+	ErrLoadManifest   = errors.New("load manifest file")
+	ErrCleanDB        = errors.New("clean database")
+	ErrRecoverDB      = errors.New("recover database")
+	ErrNewIndex       = errors.New("new index")
+	ErrDiskOutOfLimit = errors.New("disk out of limit")
 )
 
 type writer struct {
@@ -54,6 +55,10 @@ type DBImpl struct {
 
 	compacting *atomic.Bool
 	wallTime   *atomic.Int64
+
+	// hint wal file is immutable
+	// the cache used to estimate total size of database
+	hintSizeCache map[uint64]int64
 }
 
 func NewDB(opts *Options) (*DBImpl, error) {
@@ -79,15 +84,16 @@ func NewDB(opts *Options) (*DBImpl, error) {
 	}
 
 	dbImpl := &DBImpl{
-		opts:       opts,
-		fileLock:   fileLock,
-		randor:     randor,
-		stop:       make(chan bool),
-		writers:    NewDeque[*writer](),
-		manifest:   manifest,
-		bgErr:      nil,
-		compacting: new(atomic.Bool),
-		wallTime:   new(atomic.Int64),
+		opts:          opts,
+		fileLock:      fileLock,
+		randor:        randor,
+		stop:          make(chan bool),
+		writers:       NewDeque[*writer](),
+		manifest:      manifest,
+		bgErr:         nil,
+		compacting:    new(atomic.Bool),
+		wallTime:      new(atomic.Int64),
+		hintSizeCache: make(map[uint64]int64),
 	}
 
 	dbImpl.compacting.Store(false)
@@ -119,10 +125,7 @@ func (db *DBImpl) recoverFromWals() error {
 		wals = append(wals, fid)
 	}
 
-	// positive order
-	sort.Slice(wals, func(i int, j int) bool {
-		return wals[i] < wals[j]
-	})
+	slices.Sort(wals)
 
 	// recover from older wals to newest wals
 	for _, fid := range wals {
@@ -168,6 +171,10 @@ func (db *DBImpl) doBackgroundTask() {
 		case <-tick.C:
 			tickNum++
 			db.wallTime.Store(time.Now().Unix())
+		}
+
+		if tickNum%CheckDiskUsageInterval == 0 && db.opts.DiskUsageLimited > 0 {
+			db.reclaimDiskUsage(db.opts.DiskUsageLimited)
 		}
 
 		if tickNum%CompactionTriggerInterval == 0 {
