@@ -73,9 +73,7 @@ func NewManifest(dir string) (*Manifest, error) {
 		return nil, err
 	}
 
-	runners.Post(func() {
-		active.Unref()
-	})
+	defer active.Unref()
 
 	manifest := &Manifest{
 		dir:     dir,
@@ -181,8 +179,7 @@ func (m *Manifest) recoverFromManifest() error {
 	}
 
 	edit := &ManifestEdit{}
-	err = edit.DecodeFrom(buf)
-	if err != nil {
+	if err = edit.DecodeFrom(buf); err != nil {
 		return err
 	}
 
@@ -214,6 +211,7 @@ func (m *Manifest) recoverFromManifest() error {
 		if err != nil {
 			return err
 		}
+		defer wal.Unref()
 		addFiles[idx].wal = wal
 	}
 
@@ -236,6 +234,7 @@ func (m *Manifest) RotateWal() (old *Wal, err error) {
 	if err != nil {
 		return nil, err
 	}
+	defer wal.Unref()
 
 	edit := &ManifestEdit{
 		addFiles:   []LogFile{{wal, wal.Fid()}},
@@ -244,18 +243,12 @@ func (m *Manifest) RotateWal() (old *Wal, err error) {
 	}
 
 	if err = m.LogAndApply(edit); err != nil {
-		wal.Unref()
 		return
 	}
 
 	old = m.active
 	m.active.Freeze()
 	m.active = wal
-	m.wals[wal.Fid()] = &WalInfo{
-		wal:            wal,
-		freeBytes:      0,
-		deltaFreeBytes: 0,
-	}
 
 	return
 }
@@ -423,6 +416,7 @@ func (m *Manifest) Apply(edit *ManifestEdit) error {
 func (m *Manifest) apply(edit *ManifestEdit) {
 	// add wals
 	for _, add := range edit.addFiles {
+		add.wal.Ref()
 		m.wals[add.fid] = &WalInfo{
 			wal:            add.wal,
 			freeBytes:      0,

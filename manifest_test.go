@@ -26,8 +26,11 @@ func TestManifest_NewManifest(t *testing.T) {
 
 	assert.Equal(t, manifest.fid, uint64(1))
 	assert.Equal(t, manifest.nextFid, uint64(3))
-	assert.NotNil(t, manifest.ActiveWal())
-	assert.Equal(t, manifest.ActiveWal().Fid(), uint64(2))
+
+	active := manifest.ActiveWal()
+	assert.NotNil(t, active)
+	assert.Equal(t, active.Fid(), uint64(2))
+
 	assert.True(t, manifest.FileSize() > 0)
 }
 
@@ -48,8 +51,11 @@ func TestManifest_LoadManifest(t *testing.T) {
 
 	assert.Equal(t, manifest.fid, uint64(1))
 	assert.Equal(t, manifest.nextFid, uint64(3))
-	assert.NotNil(t, manifest.ActiveWal())
-	assert.Equal(t, manifest.ActiveWal().Fid(), uint64(2))
+
+	active := manifest.ActiveWal()
+	assert.NotNil(t, active)
+	assert.Equal(t, active.Fid(), uint64(2))
+
 	assert.True(t, manifest.FileSize() > 0)
 }
 
@@ -65,6 +71,12 @@ func TestManifest_RotateWal(t *testing.T) {
 	old, err := manifest.RotateWal()
 	assert.Nil(t, err)
 	assert.Equal(t, old.Fid(), uint64(2))
+	assert.Equal(t, old.refs.Load(), int64(1))
+
+	active := manifest.ActiveWal()
+	assert.NotNil(t, active)
+	assert.Equal(t, active.refs.Load(), int64(1))
+
 	assert.Equal(t, manifest.nextFid, uint64(4))
 }
 
@@ -93,6 +105,10 @@ func TestManifest_Apply(t *testing.T) {
 	manifest, err := NewManifest(dir)
 	assert.Nil(t, err)
 
+	active := manifest.ActiveWal()
+	assert.Equal(t, active.refs.Load(), int64(1))
+	assert.Equal(t, active.Fid(), uint64(2))
+
 	defer manifest.Close()
 
 	wal3, err := NewWal(WalPath(dir, 3), 3, -1)
@@ -105,7 +121,6 @@ func TestManifest_Apply(t *testing.T) {
 	assert.Nil(t, err)
 
 	// apply
-	assert.Equal(t, manifest.ActiveWal().Fid(), uint64(2))
 	edit1 := &ManifestEdit{
 		addFiles: []LogFile{
 			{fid: 3, wal: wal3},
@@ -116,17 +131,20 @@ func TestManifest_Apply(t *testing.T) {
 		nextFid:    6,
 	}
 
-	err = manifest.Apply(edit1)
-	assert.Nil(t, err)
+	assert.Nil(t, manifest.Apply(edit1))
+	assert.Equal(t, wal3.refs.Load(), int64(2))
+	assert.Equal(t, wal4.refs.Load(), int64(2))
+	assert.Equal(t, wal5.refs.Load(), int64(2))
 
 	edit2 := &ManifestEdit{
 		deleteFiles: []LogFile{{fid: 4}, {fid: 5}},
 	}
 
-	err = manifest.Apply(edit2)
-	assert.Nil(t, err)
+	assert.Nil(t, manifest.Apply(edit2))
+	assert.Equal(t, wal3.refs.Load(), int64(2))
+	assert.Equal(t, wal4.refs.Load(), int64(1))
+	assert.Equal(t, wal5.refs.Load(), int64(1))
 
-	// check
 	assert.Nil(t, manifest.ToWal(4))
 	assert.Nil(t, manifest.ToWal(5))
 	assert.NotNil(t, manifest.ToWal(3))
@@ -151,7 +169,6 @@ func TestManifest_LogAndApply(t *testing.T) {
 	assert.Nil(t, err)
 
 	// apply
-	assert.Equal(t, manifest.ActiveWal().Fid(), uint64(2))
 	edit1 := &ManifestEdit{
 		addFiles: []LogFile{
 			{fid: 3, wal: wal3},
@@ -162,25 +179,37 @@ func TestManifest_LogAndApply(t *testing.T) {
 		nextFid:    6,
 	}
 
-	err = manifest.LogAndApply(edit1)
-	assert.Nil(t, err)
+	assert.Nil(t, manifest.LogAndApply(edit1))
+	assert.Equal(t, wal3.refs.Load(), int64(2))
+	assert.Equal(t, wal4.refs.Load(), int64(2))
+	assert.Equal(t, wal5.refs.Load(), int64(2))
 
 	edit2 := &ManifestEdit{
 		deleteFiles: []LogFile{{fid: 4}, {fid: 5}},
 	}
 
-	err = manifest.LogAndApply(edit2)
-	assert.Nil(t, err)
+	assert.Nil(t, manifest.LogAndApply(edit2))
+	assert.Equal(t, wal3.refs.Load(), int64(2))
+	assert.Equal(t, wal4.refs.Load(), int64(1))
+	assert.Equal(t, wal5.refs.Load(), int64(1))
 
 	// re-open manifest
-	manifest.Close()
+	manifest.Close() // all referenced wals will be closed
+
 	manifest, err = LoadManifest(dir)
 	assert.Nil(t, err)
 
 	// check
 	assert.Nil(t, manifest.ToWal(4))
 	assert.Nil(t, manifest.ToWal(5))
-	assert.NotNil(t, manifest.ToWal(3))
-	assert.NotNil(t, manifest.ToWal(2))
+
+	wal2 := manifest.ToWal(2)
+	assert.NotNil(t, wal2)
+	assert.Equal(t, wal2.refs.Load(), int64(1))
+
+	wal3 = manifest.ToWal(3)
+	assert.NotNil(t, wal3)
+	assert.Equal(t, wal3.refs.Load(), int64(1))
+
 	assert.Equal(t, manifest.nextFid, uint64(6))
 }
