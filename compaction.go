@@ -228,8 +228,7 @@ func (db *DBImpl) compactOneWal(dst *WalRewriter, hintWriter *HintWriter, src *W
 		}
 
 		// write dst wal
-		foff, err = dst.AppendRecord(recordBytes)
-		if err != nil {
+		if foff, err = dst.AppendRecord(recordBytes); err != nil {
 			return err
 		}
 

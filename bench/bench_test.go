@@ -12,6 +12,17 @@ import (
 
 var db bitcask.DB
 
+const BatchSize = 50
+
+func genTestKey(i int) []byte {
+	return []byte(strconv.Itoa(i))
+}
+
+var (
+	bin4KB = bitcask.GenNKBytes(4)
+	ns     = sha1.Sum([]byte("benchmark"))
+)
+
 func newDB(b *testing.B) {
 	dir := "./bitcaskDB"
 	_ = os.RemoveAll(dir)
@@ -22,11 +33,14 @@ func newDB(b *testing.B) {
 		WalMaxSize:                1024 * 1024 * 1024, // 1GB
 		ManifestMaxSize:           10 * 1024 * 1024,   // 10MB
 		IndexCapacity:             1000000,            // 1 million
-		IndexLimited:              80000,
+		IndexLimited:              800000,
 		IndexEvictionPoolCapacity: 64,
 		IndexSampleKeys:           5,
 		CompactionPicker:          nil, // default picker
 		CompactionFilter:          nil, // default filter
+		NsSize:                    bitcask.DefaultNsSize,
+		EtagSize:                  bitcask.DefaultEtagSize,
+		DisableCompaction:         true,
 	}
 
 	var err error
@@ -38,16 +52,15 @@ func BenchmarkPutGet(b *testing.B) {
 	newDB(b)
 	defer db.Close()
 
-	b.Run("put", benchmarkPut)
-	b.Run("batchPut", benchmarkBatchPut)
-	b.Run("get", benchmarkGet)
+	b.Run("put4K", benchmarkPut)
+	b.Run("batchPut4K", benchmarkBatchPut)
+	b.Run("get4K", benchmarkGet)
+
+	b.Run("concurrentGet4K", benchmarkConcurrentGet)
+	b.Run("concurrentPut4K", benchmarkConcurrentPut)
 }
 
 func benchmarkPut(b *testing.B) {
-	ns := sha1.Sum([]byte("test"))
-	getTestBytes := func(i int) []byte {
-		return []byte(strconv.Itoa(i))
-	}
 	meta := bitcask.NewMeta(nil)
 	opts := &bitcask.WriteOptions{}
 
@@ -55,28 +68,41 @@ func benchmarkPut(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		err := db.Put(ns[:], getTestBytes(i), getTestBytes(i), meta, opts)
+		err := db.Put(ns[:], genTestKey(i), bin4KB, meta, opts)
 		assert.Nil(b, err)
 	}
 }
 
-func benchmarkBatchPut(b *testing.B) {
-	ns := sha1.Sum([]byte("test"))
-	getTestBytes := func(i int) []byte {
-		return []byte(strconv.Itoa(i))
-	}
+func benchmarkConcurrentPut(b *testing.B) {
 	meta := bitcask.NewMeta(nil)
 	opts := &bitcask.WriteOptions{}
-	const batchSize = 50
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	b.RunParallel(func(pb *testing.PB) {
+		iteration := 0
+		for pb.Next() {
+			err := db.Put(ns[:], genTestKey(iteration), bin4KB, meta, opts)
+			assert.Nil(b, err)
+
+			iteration++
+		}
+	})
+}
+
+func benchmarkBatchPut(b *testing.B) {
+	meta := bitcask.NewMeta(nil)
+	opts := &bitcask.WriteOptions{}
 
 	b.ResetTimer()
 	b.ReportAllocs()
 
 	batch := bitcask.NewBatch()
 	for i := 0; i < b.N; i++ {
-		batch.Put(ns[:], getTestBytes(i), getTestBytes(i), meta)
+		batch.Put(ns[:], genTestKey(i), bin4KB, meta)
 
-		if i%batchSize == 0 {
+		if i%BatchSize == 0 {
 			err := db.Write(batch, opts)
 			assert.Nil(b, err)
 			batch.Clear()
@@ -89,25 +115,24 @@ func benchmarkBatchPut(b *testing.B) {
 	}
 }
 
-func benchmarkGet(b *testing.B) {
-	ns := sha1.Sum([]byte("test"))
-	getTestBytes := func(i int) []byte {
-		return []byte(strconv.Itoa(i))
-	}
+func getPrepare(b *testing.B) {
 	meta := bitcask.NewMeta(nil)
 	wOpts := &bitcask.WriteOptions{}
 
-	const batchSize = 50
 	batch := bitcask.NewBatch()
 	for i := 0; i < 100001; i++ {
-		batch.Put(ns[:], getTestBytes(i), getTestBytes(i), meta)
+		batch.Put(ns[:], genTestKey(i), bin4KB, meta)
 
-		if i%batchSize == 0 {
+		if i%BatchSize == 0 {
 			err := db.Write(batch, wOpts)
 			assert.Nil(b, err)
 			batch.Clear()
 		}
 	}
+}
+
+func benchmarkGet(b *testing.B) {
+	getPrepare(b)
 
 	rOpts := &bitcask.ReadOptions{}
 
@@ -115,6 +140,26 @@ func benchmarkGet(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		_, _, _ = db.Get(ns[:], getTestBytes(i), rOpts)
+		_, _, err := db.Get(ns[:], genTestKey(i%100000), rOpts)
+		assert.Nil(b, err)
 	}
+}
+
+func benchmarkConcurrentGet(b *testing.B) {
+	getPrepare(b)
+
+	rOpts := &bitcask.ReadOptions{}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	b.RunParallel(func(pb *testing.PB) {
+		iteration := 0
+		for pb.Next() {
+			_, _, err := db.Get(ns[:], genTestKey(iteration%100000), rOpts)
+			assert.Nil(b, err)
+
+			iteration++
+		}
+	})
 }

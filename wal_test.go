@@ -93,7 +93,7 @@ func TestWal_LargeRecord2(t *testing.T) {
 	wal := setupWal("test_wal_large2.wal", t)
 	defer wal.Unref()
 
-	data := genNKBytes(5)
+	data := GenNKBytes(5)
 	offsets := make([]uint64, 1000)
 	for i := 0; i < 1000; i++ {
 		off, err := wal.WriteRecord(data)

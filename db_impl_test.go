@@ -14,23 +14,6 @@ func sha1Bytes(input string) [20]byte {
 	return sha1.Sum([]byte(input))
 }
 
-func gen1KBytes() []byte {
-	buf := make([]byte, 1024)
-	for i := 0; i < 128; i++ {
-		copy(buf[i*8:], []byte("01234567"))
-	}
-	return buf
-}
-
-func genNKBytes(sz int) []byte {
-	bytes1KB := gen1KBytes()
-	buf := make([]byte, 1024*sz)
-	for i := 0; i < sz; i++ {
-		copy(buf[i*1024:], bytes1KB)
-	}
-	return buf
-}
-
 func setupDB(t *testing.T) *DBImpl {
 	dir := "./test_bitcask_db"
 	_ = os.RemoveAll(dir)
@@ -159,7 +142,7 @@ func TestDBImplWALRotate(t *testing.T) {
 func TestDBImplPersistence(t *testing.T) {
 	db := setupDB(t)
 
-	bin4K := genNKBytes(4)
+	bin4K := GenNKBytes(4)
 	appMeta := make(map[string]string)
 	appMeta["test"] = string(bin4K)
 

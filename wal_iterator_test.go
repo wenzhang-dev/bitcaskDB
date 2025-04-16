@@ -43,7 +43,7 @@ func TestWalIterator_LargeData(t *testing.T) {
 	wal := setupWal("test_wal_it_large_data.wal", t)
 	defer wal.Unref()
 
-	data5KB := genNKBytes(5)
+	data5KB := GenNKBytes(5)
 
 	// total 5MB = 4KB * 1024
 	for i := 0; i < 1024; i++ {

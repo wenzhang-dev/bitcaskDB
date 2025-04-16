@@ -15,7 +15,7 @@ func TestCompaction_OneFullRewriteWal(t *testing.T) {
 	// the wal capacity is 1MB
 	// one wal can store up to 256 elements
 	meta := NewMeta(nil)
-	bin4K := genNKBytes(4)
+	bin4K := GenNKBytes(4)
 	ns := sha1Bytes("compaction")
 	opts := &WriteOptions{}
 
@@ -84,7 +84,7 @@ func TestCompaction_OneNonFullRewriteWal(t *testing.T) {
 	// the wal capacity is 1MB
 	// one wal can store up to 256 elements
 	meta := NewMeta(nil)
-	bin4K := genNKBytes(4)
+	bin4K := GenNKBytes(4)
 	ns := sha1Bytes("compaction")
 	opts := &WriteOptions{}
 
@@ -152,7 +152,7 @@ func TestCompaction_TwoFullRewriteWals(t *testing.T) {
 	// the wal capacity is 1MB
 	// one wal can store up to 256 elements
 	meta := NewMeta(nil)
-	bin4K := genNKBytes(4)
+	bin4K := GenNKBytes(4)
 	ns := sha1Bytes("compaction")
 	opts := &WriteOptions{}
 
@@ -232,7 +232,7 @@ func TestCompaction_TwoNonFullRewriteWals(t *testing.T) {
 	// the wal capacity is 1MB
 	// one wal can store up to 256 elements
 	meta := NewMeta(nil)
-	bin4K := genNKBytes(4)
+	bin4K := GenNKBytes(4)
 	ns := sha1Bytes("compaction")
 	opts := &WriteOptions{}
 

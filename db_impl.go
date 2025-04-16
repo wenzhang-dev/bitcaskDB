@@ -180,7 +180,7 @@ func (db *DBImpl) doBackgroundTask() {
 			db.reclaimDiskUsage(int64(db.opts.DiskUsageLimited))
 		}
 
-		if tickNum%compactionTriggerInterval == 0 {
+		if tickNum%compactionTriggerInterval == 0 && !db.opts.DisableCompaction {
 			db.maybeScheduleCompaction()
 		}
 	}
