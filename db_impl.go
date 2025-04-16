@@ -64,6 +64,8 @@ type DBImpl struct {
 }
 
 func NewDB(opts *Options) (*DBImpl, error) {
+	opts.Init()
+
 	fileLock := flock.New(LockPath(opts.Dir))
 	hold, err := fileLock.TryLock()
 	if err != nil || !hold {
@@ -80,10 +82,6 @@ func NewDB(opts *Options) (*DBImpl, error) {
 	}
 
 	randor := rand.New(rand.NewSource(time.Now().Unix()))
-
-	if opts.CompactionPicker == nil {
-		opts.CompactionPicker = DefaultCompactionPicker
-	}
 
 	dbImpl := &DBImpl{
 		opts:          opts,
@@ -162,6 +160,9 @@ func (db *DBImpl) recoverFromWal(fid uint64) error {
 }
 
 func (db *DBImpl) doBackgroundTask() {
+	checkDiskUsageInterval := int(GetOptions().CheckDiskUsageInterval)
+	compactionTriggerInterval := int(GetOptions().CompactionTriggerInterval)
+
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 
@@ -175,11 +176,11 @@ func (db *DBImpl) doBackgroundTask() {
 			db.wallTime.Store(time.Now().Unix())
 		}
 
-		if tickNum%CheckDiskUsageInterval == 0 && db.opts.DiskUsageLimited > 0 {
-			db.reclaimDiskUsage(db.opts.DiskUsageLimited)
+		if tickNum%checkDiskUsageInterval == 0 && db.opts.DiskUsageLimited > 0 {
+			db.reclaimDiskUsage(int64(db.opts.DiskUsageLimited))
 		}
 
-		if tickNum%CompactionTriggerInterval == 0 {
+		if tickNum%compactionTriggerInterval == 0 {
 			db.maybeScheduleCompaction()
 		}
 	}

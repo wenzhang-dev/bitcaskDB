@@ -1,13 +1,13 @@
 package bitcask
 
 const (
-	NsSize   = 20
-	EtagSize = 20
+	DefaultNsSize   = 20
+	DefaultEtagSize = 20
 
 	// trigger one compaction per 60 second
-	CompactionTriggerInterval = 60
+	DefaultCompactionTriggerInterval = 60
 
-	CheckDiskUsageInterval = 20
+	DefaultCheckDiskUsageInterval = 20
 
-	CompactionPickerRatio = 0.4
+	DefaultCompactionPickerRatio = 0.4
 )

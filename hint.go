@@ -16,7 +16,6 @@ type HintRecord struct {
 }
 
 const (
-	minHintRecordSize       = NsSize + 1 + 1 + 1*3
 	hintWalRewriterThrehold = 1024 * 1024 // 1MB
 )
 
@@ -49,14 +48,16 @@ func (r *HintRecord) Encode() ([]byte, error) {
 }
 
 func (r *HintRecord) Decode(data []byte) error {
+	nsSize := int(GetOptions().NsSize)
+	minHintRecordSize := nsSize + 1 + 1 + 1*3
 	if len(data) < minHintRecordSize {
 		return ErrCorruptedHintRecord
 	}
 
 	offset := 0
 
-	r.ns = data[:NsSize]
-	offset += NsSize
+	r.ns = data[:nsSize]
+	offset += nsSize
 
 	keyLen, nbytes := DecodeUvarint(data[offset:])
 	offset += nbytes

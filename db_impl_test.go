@@ -45,6 +45,8 @@ func setupDB(t *testing.T) *DBImpl {
 		IndexLimited:              800000,
 		IndexEvictionPoolCapacity: 32,
 		IndexSampleKeys:           5,
+		NsSize:                    DefaultNsSize,
+		EtagSize:                  DefaultEtagSize,
 	}
 
 	db, err := NewDB(opts)
@@ -64,6 +66,8 @@ func loadDB(t *testing.T) *DBImpl {
 		IndexLimited:              800000,
 		IndexEvictionPoolCapacity: 32,
 		IndexSampleKeys:           5,
+		NsSize:                    DefaultNsSize,
+		EtagSize:                  DefaultEtagSize,
 	}
 
 	db, err := NewDB(opts)

@@ -7,7 +7,50 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestRecordEncodingDecoding(t *testing.T) {
+func TestRecord_EmptyNs(t *testing.T) {
+	// mock global options
+	oldOpts := gOpts
+	gOpts = &Options{
+		NsSize:   0,
+		EtagSize: 0,
+	}
+	defer func() {
+		gOpts = oldOpts
+	}()
+
+	// testcase
+	record := &Record{
+		Ns:    nil,
+		Key:   []byte("test-key"),
+		Value: []byte("test-value"),
+		Meta:  NewMeta(nil),
+	}
+
+	baseTime := uint64(time.Now().Unix())
+	encoded, err := record.Encode(baseTime)
+	assert.Nil(t, err)
+
+	decoded, err := RecordFromBytes(encoded, baseTime)
+	assert.Nil(t, err)
+
+	// check
+	assert.Equal(t, len(decoded.Ns), 0)
+	assert.Equal(t, decoded.Key, record.Key)
+	assert.Equal(t, decoded.Value, record.Value)
+}
+
+func TestRecord_EncodingDecoding(t *testing.T) {
+	// mock global options
+	oldOpts := gOpts
+	gOpts = &Options{
+		NsSize:   DefaultNsSize,
+		EtagSize: DefaultEtagSize,
+	}
+	defer func() {
+		gOpts = oldOpts
+	}()
+
+	// testcase
 	ns := sha1Bytes("test-ns")
 	etag := sha1Bytes("etag")
 	baseTime := uint64(time.Now().Unix())

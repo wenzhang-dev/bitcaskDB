@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"golang.org/x/sys/unix"
 )
@@ -85,7 +86,47 @@ type Options struct {
 	CompactionPicker CompactionPicker
 	CompactionFilter CompactionFilter
 
-	DiskUsageLimited int64
+	DiskUsageLimited uint64
+
+	NsSize   uint64
+	EtagSize uint64
+
+	CompactionTriggerInterval uint64
+	CheckDiskUsageInterval    uint64
+
+	CompactionPickerRatio float64
+}
+
+func (o *Options) Init() {
+	if o.CompactionPicker == nil {
+		o.CompactionPicker = DefaultCompactionPicker
+	}
+
+	if o.CompactionTriggerInterval <= 0 {
+		o.CompactionTriggerInterval = DefaultCompactionTriggerInterval
+	}
+
+	if o.CheckDiskUsageInterval <= 0 {
+		o.CheckDiskUsageInterval = DefaultCheckDiskUsageInterval
+	}
+
+	if o.CompactionPickerRatio <= 0 {
+		o.CompactionPickerRatio = DefaultCompactionPickerRatio
+	}
+
+	optsInitOnce.Do(func() {
+		gOpts = o
+	})
+}
+
+var (
+	gOpts        *Options
+	optsInitOnce sync.Once
+)
+
+// read-only
+func GetOptions() *Options {
+	return gOpts
 }
 
 type DB interface {
@@ -272,6 +313,8 @@ func GenSha1Etag(data []byte) []byte {
 }
 
 func DefaultCompactionPicker(wals []PickerWalInfo) []uint64 {
+	compactionPickerRatio := GetOptions().CompactionPickerRatio
+
 	// reverse order
 	sort.Slice(wals, func(i, j int) bool {
 		return wals[i].FreeBytes > wals[j].FreeBytes
@@ -282,7 +325,7 @@ func DefaultCompactionPicker(wals []PickerWalInfo) []uint64 {
 		size := float64(wals[idx].WalSize)
 		free := float64(wals[idx].FreeBytes)
 
-		if free/size < CompactionPickerRatio {
+		if free/size < compactionPickerRatio {
 			break
 		}
 

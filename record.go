@@ -26,13 +26,13 @@ type Record struct {
 //
 // the header including:
 // - header size: 1B
-// - ns: 20B, fixed size
+// - ns: fixed size
 // - flags: 1B
 // - key size: varint32 1~5B
 // - value size: varint32 1~5B
 // - meta size: varint32 1~5B
 // - etag: optional, fixed size
-// - ttl: optional, varint32 1~5B
+// - expire: optional, varint32 1~5B
 // - other optional fields if need
 //
 // for small record:
@@ -42,15 +42,15 @@ type Record struct {
 // if key=64B, value=128KB, meta=1KB, it's header is about 50B, and effective space usage is abort 99%
 
 const (
-	minRecordHeaderSize         = 1 + NsSize + 1 + 1*3
-	approximateRecordHeaderSize = 1 + NsSize + 1 + 2*3 + EtagSize + 2
-
 	noEtagFieldBit    = 0
 	noExpireFieldBit  = 1
 	tombstoneFieldBit = 2
 )
 
 func (r *Record) ApproximateSize() int {
+	// 1B header size + len(ns) + 1B flags + 2B varint * 3 + len(meta) + 2B expire
+	approximateRecordHeaderSize := 1 + len(r.Ns) + 1 + 2*3 + len(r.Meta.Etag) + 2
+
 	return approximateRecordHeaderSize + len(r.Key) + len(r.Value) + r.Meta.AppMetaApproximateSize()
 }
 
@@ -130,16 +130,12 @@ func (r *Record) Encode(baseTime uint64) ([]byte, error) {
 	return buf, nil
 }
 
-// return 0, 0 for all exceptions
-func decodeUvarint(data []byte) (uint64, int) {
-	v, size := binary.Uvarint(data)
-	if size <= 0 {
-		return 0, 0
-	}
-	return v, size
-}
-
 func RecordFromBytes(data []byte, baseTime uint64) (*Record, error) {
+	nsSize := int(GetOptions().NsSize)
+
+	// 1B header size + len(ns) + 1B flags + 1B variant * 3
+	minRecordHeaderSize := 1 + nsSize + 1 + 1*3
+
 	if len(data) < minRecordHeaderSize {
 		return nil, errors.New("invalid data")
 	}
@@ -151,28 +147,28 @@ func RecordFromBytes(data []byte, baseTime uint64) (*Record, error) {
 	offset++
 
 	// namespace
-	ns := data[offset : offset+NsSize]
-	offset += NsSize
+	ns := data[offset : offset+nsSize]
+	offset += nsSize
 
 	// flag
 	flag := data[offset]
 	offset++
 
 	// key size
-	keyLen, keySize := decodeUvarint(data[offset:])
+	keyLen, keySize := DecodeUvarint(data[offset:])
 	offset += keySize
 
 	// value size
-	valLen, valSize := decodeUvarint(data[offset:])
+	valLen, valSize := DecodeUvarint(data[offset:])
 	offset += valSize
 
 	// meta size
-	metaLen, metaSize := decodeUvarint(data[offset:])
+	metaLen, metaSize := DecodeUvarint(data[offset:])
 	offset += metaSize
 
 	// validation
 	// avoid out of range of data buffer
-	etagLen := EtagSize
+	etagLen := int(GetOptions().EtagSize)
 	if flag&(1<<noEtagFieldBit) != 0 {
 		etagLen = 0
 	}
@@ -180,7 +176,7 @@ func RecordFromBytes(data []byte, baseTime uint64) (*Record, error) {
 	expireSize := 0
 	expire := uint64(MetaNoExpire)
 	if flag&(1<<noExpireFieldBit) == 0 {
-		expire, expireSize = decodeUvarint(data[offset+etagLen:])
+		expire, expireSize = DecodeUvarint(data[offset+etagLen:])
 		expire += baseTime
 	}
 
