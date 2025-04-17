@@ -32,8 +32,8 @@ func newDB(b *testing.B) {
 		Dir:                       dir,
 		WalMaxSize:                1024 * 1024 * 1024, // 1GB
 		ManifestMaxSize:           10 * 1024 * 1024,   // 10MB
-		IndexCapacity:             1000000,            // 1 million
-		IndexLimited:              800000,
+		IndexCapacity:             10000000,           // 10 million
+		IndexLimited:              8000000,
 		IndexEvictionPoolCapacity: 64,
 		IndexSampleKeys:           5,
 		CompactionPicker:          nil, // default picker
@@ -141,7 +141,7 @@ func benchmarkGet(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		_, _, err := db.Get(ns[:], genTestKey(i%100000), rOpts)
-		assert.Nil(b, err)
+		assert.Nilf(b, err, "i: %v", i)
 	}
 }
 

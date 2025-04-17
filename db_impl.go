@@ -220,7 +220,7 @@ func (db *DBImpl) Write(batch *Batch, opts *WriteOptions) error {
 
 		// no race condition. the wal file only is written by front writer
 		active := db.manifest.active
-		offs, sizes, err := db.writeWal(active, batch)
+		locs, err := db.writeWal(active, batch)
 		if err == nil && opts.Sync {
 			if err = active.Sync(); err != nil {
 				syncErr = err
@@ -230,7 +230,7 @@ func (db *DBImpl) Write(batch *Batch, opts *WriteOptions) error {
 		// index is thread-safe
 		var writeStats map[uint64]uint64
 		if err == nil {
-			writeStats = db.writeIndex(batch, active.Fid(), offs, sizes)
+			writeStats = db.writeIndex(batch, active.Fid(), locs)
 		}
 
 		db.mu.Lock()
@@ -271,7 +271,7 @@ func (db *DBImpl) Write(batch *Batch, opts *WriteOptions) error {
 }
 
 // the index is always writable
-func (db *DBImpl) writeIndex(batch *Batch, fid uint64, offs []uint64, sizes []uint64) map[uint64]uint64 {
+func (db *DBImpl) writeIndex(batch *Batch, fid uint64, locs [][2]uint64) map[uint64]uint64 {
 	writeStats := make(map[uint64]uint64)
 
 	for idx := range batch.records {
@@ -284,7 +284,7 @@ func (db *DBImpl) writeIndex(batch *Batch, fid uint64, offs []uint64, sizes []ui
 		case record.Meta.IsTombstone():
 			_ = db.index.SoftDelete(record.Ns, record.Key, stat)
 		default:
-			_ = db.index.Put(record.Ns, record.Key, fid, offs[idx], sizes[idx], stat)
+			_ = db.index.Put(record.Ns, record.Key, fid, locs[idx][0], locs[idx][1], stat)
 		}
 
 		writeStats[stat.FreeWalFid] += stat.FreeBytes
@@ -293,30 +293,27 @@ func (db *DBImpl) writeIndex(batch *Batch, fid uint64, offs []uint64, sizes []ui
 	return writeStats
 }
 
-func (db *DBImpl) writeWal(active *Wal, batch *Batch) (offs []uint64, sizes []uint64, err error) {
+func (db *DBImpl) writeWal(active *Wal, batch *Batch) (locs [][2]uint64, err error) {
 	var bin []byte
 	var off uint64
-	offs = make([]uint64, len(batch.records))
-	sizes = make([]uint64, len(batch.records))
+	locs = make([][2]uint64, len(batch.records))
 
 	for idx := range batch.records {
-		bin, err = batch.records[idx].Encode(active.BaseTime())
-		if err != nil {
+		if bin, err = batch.records[idx].Encode(active.BaseTime()); err != nil {
 			active.ResetBuffer()
 			return
 		}
 
-		sizes[idx] = uint64(len(bin))
-		off, err = active.WriteRecord(bin)
-		if err != nil {
+		if off, err = active.WriteRecord(bin); err != nil {
 			active.ResetBuffer()
 			return
 		}
 
-		offs[idx] = off
+		locs[idx][0] = off
+		locs[idx][1] = uint64(len(bin))
 	}
 
-	return offs, sizes, active.Flush()
+	return locs, active.Flush()
 }
 
 func (db *DBImpl) buildBatchGroup(lastWriter **writer) *Batch {

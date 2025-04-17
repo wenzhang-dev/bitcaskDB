@@ -169,56 +169,99 @@ func (db *DBImpl) backgroundCompactionLocked(wals []uint64) {
 	db.compaction = compaction
 
 	// run compaction without any lock
-	go db.doCompactionWork(compaction)
+	go db.doCompaction(compaction)
 }
 
-func (db *DBImpl) doCompactionWork(compaction *Compaction) {
+func (db *DBImpl) doCompaction(compaction *Compaction) {
+	var err error
+
 	defer func() {
 		db.compacting.Store(false)
 		compaction.Destroy()
 	}()
 
-	for idx := range compaction.inputs {
-		if err := db.compactOneWal(
-			compaction.writer, compaction.hintWriter, compaction.inputs[idx],
-		); err != nil {
-			db.bgErr = err
-			return
-		}
-	}
-
-	if err := compaction.Finalize(); err != nil {
-		db.bgErr = err
+	if err = db.doCompactionWork(compaction); err == nil {
 		return
 	}
 
-	func() {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	db.bgErr = err
+}
+
+func (db *DBImpl) doCompactionWork(compaction *Compaction) error {
+	var err error
+	for idx := range compaction.inputs {
+		if err = db.compactOneWal(
+			compaction.writer, compaction.hintWriter, compaction.inputs[idx],
+		); err != nil {
+			return err
+		}
+	}
+
+	if err = compaction.Finalize(); err != nil {
+		return err
+	}
+
+	// here, we should update the manifest and index synchronously and atomicly
+	// otherwise, whether the index or manifest update first, the query will not find the
+	// related wal, and return key not found
+	//
+	// at the same time, we don't want to hold the mutex for a long time, especially updating
+	// the index via hint wal, which maybe time consuming
+	var txn *ManifestTxn
+	onePhase := func() error {
+		var err error
+
+		db.mu.Lock()
+		txn, err = db.manifest.NewTxn()
+		db.mu.Unlock()
+
+		if err != nil {
+			return err
+		}
+
+		// let the edit visible
+		edit := &ManifestEdit{
+			addFiles:   compaction.edit.addFiles,
+			hasNextFid: compaction.edit.hasNextFid,
+			nextFid:    compaction.edit.nextFid,
+		}
+		txn.Apply(edit)
+
+		// update the index without any lock and ignore any error
+		// FIXME: put operations may evict some keys, we should put it into an edit
+		_ = IterateHint(compaction.hintWriter.Wal(), func(record *HintRecord) error {
+			_ = db.index.Put(record.ns, record.key, record.fid, record.off, record.size, nil)
+			return nil
+		})
+		return nil
+	}
+
+	twoPhase := func() error {
 		db.mu.Lock()
 		defer db.mu.Unlock()
 
-		// apply the edit
-		if err := db.manifest.LogAndApply(compaction.edit); err != nil {
-			db.bgErr = err
+		edit := &ManifestEdit{
+			deleteFiles: compaction.edit.deleteFiles,
+		}
+		if err := txn.Commit(edit); err != nil {
+			return err
 		}
 
 		// clean un-used files
 		_ = db.manifest.CleanFiles(false)
 
 		db.compaction = nil
-	}()
 
-	if db.bgErr != nil {
-		return
+		return nil
 	}
 
-	// reach here: execute without any lock
-	// the compaction hold the wal reference until the function exits
+	if err = onePhase(); err != nil {
+		return err
+	}
 
-	// update the index and ignore any error
-	_ = IterateHint(compaction.hintWriter.Wal(), func(record *HintRecord) error {
-		_ = db.index.Put(record.ns, record.key, record.fid, record.off, record.size, nil)
-		return nil
-	})
+	return twoPhase()
 }
 
 func (db *DBImpl) compactOneWal(dst *WalRewriter, hintWriter *HintWriter, src *Wal) error {
