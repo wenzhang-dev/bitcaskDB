@@ -83,6 +83,8 @@ func main() {
         IndexEvictionPoolCapacity: 32,
         IndexSampleKeys:           5,
         DiskUsageLimited:          1024 * 1024 * 1024 * 100, // 100GB
+        NsSize:                    DefaultNsSize,
+        EtagSize:                  DefaultEtagSize,
     }
 
     db, err := bitcask.NewDB(opts)

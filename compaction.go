@@ -75,12 +75,14 @@ func (c *Compaction) Finalize() error {
 
 	// corner case: empty output wal
 	// otherwise, we should add the output wal to manifest
-	if c.output.Size() != SuperBlockSize {
-		c.edit.addFiles = append(c.edit.addFiles, LogFile{
-			wal: c.output,
-			fid: c.output.Fid(),
-		})
+	if c.output.Size() == SuperBlockSize {
+		return nil
 	}
+
+	c.edit.addFiles = append(c.edit.addFiles, LogFile{
+		wal: c.output,
+		fid: c.output.Fid(),
+	})
 
 	walName := WalFilename(c.output.Fid())
 	hintName := HintFilename(c.output.Fid())
@@ -95,6 +97,11 @@ func (c *Compaction) Finalize() error {
 func (c *Compaction) Destroy() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	// corner case: empty hint file
+	if c.hintWriter.Wal().Size() == SuperBlockSize {
+		c.hintWriter.Wal().Unref()
+	}
 
 	_ = c.hintWriter.Close()
 	_ = c.writer.Close()
