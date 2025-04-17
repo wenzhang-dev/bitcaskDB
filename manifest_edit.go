@@ -41,6 +41,34 @@ type ManifestEdit struct {
 	hasNextFid bool
 }
 
+func NewManifestEdit() *ManifestEdit {
+	return &ManifestEdit{
+		hasNextFid: false,
+		freeBytes:  make(map[uint64]uint64),
+	}
+}
+
+func (edit *ManifestEdit) Merge(other *ManifestEdit) {
+	if len(other.addFiles) > 0 {
+		edit.addFiles = append(edit.addFiles, other.addFiles...)
+	}
+
+	if len(other.deleteFiles) > 0 {
+		edit.deleteFiles = append(edit.deleteFiles, other.deleteFiles...)
+	}
+
+	if other.hasNextFid {
+		edit.hasNextFid = true
+		edit.nextFid = max(edit.nextFid, other.nextFid)
+	}
+
+	if len(other.freeBytes) > 0 {
+		for fid, freeBytes := range other.freeBytes {
+			edit.freeBytes[fid] += freeBytes
+		}
+	}
+}
+
 func (edit *ManifestEdit) Encode() []byte {
 	var buf bytes.Buffer
 	encodeVarint := func(v uint64) {

@@ -114,10 +114,6 @@ func (c *Compaction) Destroy() {
 }
 
 func (db *DBImpl) maybeScheduleCompaction() {
-	if db.bgErr != nil {
-		return
-	}
-
 	if !db.compacting.CompareAndSwap(false, true) {
 		return
 	}
@@ -126,6 +122,11 @@ func (db *DBImpl) maybeScheduleCompaction() {
 
 	db.mu.Lock()
 	defer db.mu.Unlock()
+
+	if db.bgErr != nil {
+		db.compacting.Store(false)
+		return
+	}
 
 	candidateWals := make([]PickerWalInfo, 0, len(db.manifest.wals))
 	for fid := range db.manifest.wals {
@@ -157,7 +158,8 @@ func (db *DBImpl) backgroundCompactionLocked(wals []uint64) {
 		inputs[idx] = db.manifest.wals[wals[idx]].wal
 	}
 
-	compaction, err := NewCompaction(inputs, db.manifest.nextFid)
+	fid := db.manifest.GenFid()
+	compaction, err := NewCompaction(inputs, fid)
 	if err != nil {
 		db.bgErr = err
 		db.compacting.Store(false)
@@ -294,6 +296,10 @@ func (db *DBImpl) getCompactionWalsLocked() []uint64 {
 func (db *DBImpl) reclaimDiskUsage(expect int64) {
 	db.mu.Lock()
 	defer db.mu.Unlock()
+
+	if db.bgErr != nil {
+		return
+	}
 
 	usage, err := db.approximateDiskUsageLocked()
 	if err != nil {

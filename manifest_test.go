@@ -26,6 +26,7 @@ func TestManifest_NewManifest(t *testing.T) {
 
 	assert.Equal(t, manifest.fid, uint64(1))
 	assert.Equal(t, manifest.nextFid, uint64(3))
+	assert.Equal(t, manifest.NextFid(), uint64(3))
 
 	active := manifest.ActiveWal()
 	assert.NotNil(t, active)

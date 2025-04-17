@@ -11,6 +11,11 @@ import (
 	"time"
 )
 
+var (
+	ErrUnknownManifestFile   = errors.New("unknown manifest file")
+	ErrConcurrentManifestTxn = errors.New("concurrent manifest txn")
+)
+
 // it's not thread-safe
 // the MANIFEST is append-only file
 // it includes multiple edits, which record how the database changes
@@ -38,6 +43,9 @@ type Manifest struct {
 	// all wal files
 	// mapping from fid to walInfo
 	wals map[uint64]*WalInfo
+
+	// TODO: support multiple transactions
+	txn *ManifestTxn
 }
 
 type WalInfo struct {
@@ -127,7 +135,7 @@ func LoadManifest(dir string) (*Manifest, error) {
 
 	ft, fid, err := ParseFilename(string(data))
 	if err != nil || ft != ManifestFileType {
-		return nil, errors.New("invalid CURRENT file")
+		return nil, ErrUnknownManifestFile
 	}
 
 	manifestPath := filepath.Join(dir, strings.TrimSpace(string(data)))
@@ -159,10 +167,22 @@ func LoadManifest(dir string) (*Manifest, error) {
 	}
 
 	if len(manifest.wals) > 0 {
+		// find the max fid
 		maxFid := uint64(0)
 		for fid := range manifest.wals {
 			maxFid = max(maxFid, fid)
 		}
+
+		// freeze older wals
+		for fid := range manifest.wals {
+			if fid != maxFid {
+				manifest.wals[fid].wal.Freeze()
+			}
+		}
+
+		// the max fid as the active wal
+		// in some failure cases, perhaps this is not true. for example, when a compaction has just finished
+		// its wal fid is highest at the time, and then a restart happens
 		manifest.active = manifest.wals[maxFid].wal
 	}
 
@@ -178,7 +198,7 @@ func (m *Manifest) recoverFromManifest() error {
 		return err
 	}
 
-	edit := &ManifestEdit{}
+	edit := NewManifestEdit()
 	if err = edit.DecodeFrom(buf); err != nil {
 		return err
 	}
@@ -227,8 +247,11 @@ func (m *Manifest) ActiveWal() *Wal {
 
 // rotate the active wal
 func (m *Manifest) RotateWal() (old *Wal, err error) {
-	walPath := WalPath(m.dir, m.nextFid)
-	wal, err := NewWal(walPath, m.nextFid, time.Now().Unix())
+	fid := m.GenFid()
+	walPath := WalPath(m.dir, fid)
+
+	// FIXME: use wall time of database
+	wal, err := NewWal(walPath, fid, time.Now().Unix())
 	if err != nil {
 		return nil, err
 	}
@@ -236,9 +259,9 @@ func (m *Manifest) RotateWal() (old *Wal, err error) {
 	defer wal.Unref()
 
 	edit := &ManifestEdit{
-		addFiles:   []LogFile{{wal, wal.Fid()}},
+		addFiles:   []LogFile{{wal, fid}},
 		hasNextFid: true,
-		nextFid:    m.nextFid + 1,
+		nextFid:    fid + 1,
 	}
 
 	if err = m.LogAndApply(edit); err != nil {
@@ -246,18 +269,19 @@ func (m *Manifest) RotateWal() (old *Wal, err error) {
 	}
 
 	old = m.active
-	m.active.Freeze()
+	old.Freeze()
 	m.active = wal
 
 	return
 }
 
-// rotate MANIFEST file
+// rotate the manifest
 func (m *Manifest) RotateManifest() error {
 	runners := NewRunner()
 	defer runners.Do()
 
-	manifestPath := ManifestPath(m.dir, m.nextFid)
+	fid := m.GenFid()
+	manifestPath := ManifestPath(m.dir, fid)
 	fp, err := os.Create(manifestPath)
 	if err != nil {
 		return err
@@ -270,11 +294,12 @@ func (m *Manifest) RotateManifest() error {
 
 	edit := &ManifestEdit{
 		hasNextFid: true,
-		nextFid:    m.nextFid + 1,
+		nextFid:    fid + 1,
 	}
 
-	for fid := range m.wals {
-		edit.addFiles = append(edit.addFiles, LogFile{fid: fid})
+	// all wals will be written the new manifest file
+	for tfid := range m.wals {
+		edit.addFiles = append(edit.addFiles, LogFile{fid: tfid})
 	}
 
 	nbytes, err := m.persistManifestEdit(fp, edit)
@@ -282,18 +307,18 @@ func (m *Manifest) RotateManifest() error {
 		return err
 	}
 
-	newManifest := ManifestFilename(m.nextFid)
+	newManifest := ManifestFilename(fid)
 	if err = os.WriteFile(CurrentPath(m.dir), []byte(newManifest), 0o644); err != nil {
 		return err
 	}
 
+	// delete old manifest file
 	_ = m.fp.Close()
 	oldMainfestPath := ManifestPath(m.dir, m.fid)
 	_ = os.Remove(oldMainfestPath)
 
 	m.fp = fp
-	m.fid = m.nextFid
-	m.nextFid++
+	m.fid = fid
 	m.size = nbytes
 
 	// abort all functors
@@ -362,11 +387,25 @@ func (m *Manifest) CleanFiles(force bool) error {
 	return nil
 }
 
+func (m *Manifest) NewTxn() (*ManifestTxn, error) {
+	if m.txn != nil && !m.txn.IsDone() {
+		return nil, ErrConcurrentManifestTxn
+	}
+
+	m.txn = NewManifestTxn(m)
+	return m.txn, nil
+}
+
 func (m *Manifest) ToWal(fid uint64) *Wal {
 	if info, exists := m.wals[fid]; exists {
 		return info.wal
 	}
 
+	if m.txn != nil && !m.txn.IsDone() {
+		return m.txn.ToWal(fid)
+	}
+
+	m.txn = nil
 	return nil
 }
 
@@ -376,7 +415,31 @@ func (m *Manifest) ToWalWithRef(fid uint64) *Wal {
 		return info.wal
 	}
 
+	if m.txn != nil && !m.txn.IsDone() {
+		return m.txn.ToWalWithRef(fid)
+	}
+
+	m.txn = nil
 	return nil
+}
+
+func (m *Manifest) GenFid() uint64 {
+	nextFid := m.NextFid()
+	m.nextFid = nextFid + 1
+
+	return nextFid
+}
+
+func (m *Manifest) NextFid() uint64 {
+	nextFid := m.nextFid
+
+	if m.txn != nil && !m.txn.IsDone() {
+		nextFid = max(nextFid, m.txn.NextFid())
+	} else {
+		m.txn = nil
+	}
+
+	return nextFid
 }
 
 func (m *Manifest) prepareApply(edit *ManifestEdit) error {
@@ -390,6 +453,7 @@ func (m *Manifest) prepareApply(edit *ManifestEdit) error {
 		if _, exists := wals[edit.addFiles[idx].fid]; exists {
 			return errors.New("add the existed file")
 		}
+		wals[edit.addFiles[idx].fid] = struct{}{}
 	}
 
 	// validate the delete files
@@ -467,7 +531,7 @@ func (m *Manifest) LogAndApply(edit *ManifestEdit) error {
 	}
 
 	// try to append delta free bytes of other wals
-	// FIXME: only append delta free bytes large enough
+	// TODO: only append delta free bytes large enough
 	deltaBytes := make(map[uint64]uint64)
 	for fid := range edit.freeBytes {
 		deltaBytes[fid] = edit.freeBytes[fid]
@@ -476,6 +540,7 @@ func (m *Manifest) LogAndApply(edit *ManifestEdit) error {
 		deltaBytes[fid] += m.wals[fid].deltaFreeBytes
 	}
 
+	// persist the edit
 	edit.freeBytes = deltaBytes
 	nbytes, err := m.persistManifestEdit(m.fp, edit)
 	if err != nil {
@@ -484,9 +549,11 @@ func (m *Manifest) LogAndApply(edit *ManifestEdit) error {
 
 	m.size += nbytes
 
+	// the delta free bytes have persisted, so don't apply them
 	edit.freeBytes = nil
 	m.apply(edit)
 
+	// update the free bytes
 	m.applyFreeBytes(deltaBytes)
 
 	return nil
