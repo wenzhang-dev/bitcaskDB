@@ -78,7 +78,17 @@ func TestDBImplBasicWriteRead(t *testing.T) {
 	err := db.Put(ns[:], key, value, meta, &WriteOptions{})
 	assert.NoError(t, err)
 
+	// write without options
+	err = db.Put(ns[:], key, value, meta, nil)
+	assert.Nil(t, err)
+
 	readVal, readMeta, err := db.Get(ns[:], key, &ReadOptions{})
+	assert.NoError(t, err)
+	assert.Equal(t, value, readVal)
+	assert.Equal(t, meta, readMeta)
+
+	// read without options
+	readVal, readMeta, err = db.Get(ns[:], key, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, value, readVal)
 	assert.Equal(t, meta, readMeta)

@@ -25,7 +25,7 @@ func TestWal_BasicOperations(t *testing.T) {
 	}
 	assert.Nil(t, wal.Flush())
 
-	readData, err := wal.ReadRecord(offset, uint64(len(data)))
+	readData, err := wal.ReadRecord(offset, uint64(len(data)), true)
 	if err != nil {
 		t.Fatalf("Failed to read record: %v", err)
 	}
@@ -33,6 +33,10 @@ func TestWal_BasicOperations(t *testing.T) {
 	if string(readData) != string(data) {
 		t.Fatalf("Data mismatch: expected %s, got %s", string(data), string(readData))
 	}
+
+	readData, err = wal.ReadRecord(offset, uint64(len(data)), false)
+	assert.Nil(t, err)
+	assert.Equal(t, data, readData)
 }
 
 // Test WAL behavior with multiple writes and reads
@@ -57,7 +61,7 @@ func TestWal_MultipleRecords(t *testing.T) {
 	assert.Nil(t, wal.Flush())
 
 	for i, offset := range offsets {
-		readData, err := wal.ReadRecord(offset, uint64(len(records[i])))
+		readData, err := wal.ReadRecord(offset, uint64(len(records[i])), true)
 		if err != nil {
 			t.Fatalf("Failed to read record at offset %d: %v", offset, err)
 		}
@@ -81,7 +85,7 @@ func TestWal_LargeRecord(t *testing.T) {
 	}
 	assert.Nil(t, wal.Flush())
 
-	readData, err := wal.ReadRecord(offset, uint64(len(largeData)))
+	readData, err := wal.ReadRecord(offset, uint64(len(largeData)), true)
 	if err != nil {
 		t.Fatalf("Failed to read large record: %v", err)
 	}
@@ -104,7 +108,7 @@ func TestWal_LargeRecord2(t *testing.T) {
 
 	// check
 	for i := 0; i < 1000; i++ {
-		readData, err := wal.ReadRecord(offsets[i], uint64(len(data)))
+		readData, err := wal.ReadRecord(offsets[i], uint64(len(data)), true)
 		assert.Nil(t, err)
 		assert.Equal(t, readData, data)
 	}
@@ -144,7 +148,7 @@ func TestWal_CorruptedRead(t *testing.T) {
 	}
 	defer wal.Close()
 
-	_, err = wal.ReadRecord(offset, uint64(len(data)))
+	_, err = wal.ReadRecord(offset, uint64(len(data)), true)
 	if err == nil {
 		t.Fatalf("Expected error when reading corrupted record, but got none")
 	}
@@ -172,13 +176,13 @@ func TestWal_BlockPadding(t *testing.T) {
 	assert.Nil(t, wal.Flush())
 
 	// Ensure both records can be read correctly
-	readData, err := wal.ReadRecord(offset, uint64(len(data)))
+	readData, err := wal.ReadRecord(offset, uint64(len(data)), true)
 	if err != nil {
 		t.Fatalf("Failed to read first record: %v", err)
 	}
 	assert.Equal(t, readData, data)
 
-	readData, err = wal.ReadRecord(secondOffset, uint64(len(secondData)))
+	readData, err = wal.ReadRecord(secondOffset, uint64(len(secondData)), true)
 	if err != nil {
 		t.Fatalf("Failed to read second record: %v", err)
 	}
@@ -207,7 +211,7 @@ func TestWal_ReopenPersistence(t *testing.T) {
 
 	defer wal.Close()
 
-	readData, err := wal.ReadRecord(offset, uint64(len(data)))
+	readData, err := wal.ReadRecord(offset, uint64(len(data)), true)
 	if err != nil {
 		t.Fatalf("Failed to read record after reopening: %v", err)
 	}

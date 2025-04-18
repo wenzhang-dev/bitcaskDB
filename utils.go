@@ -129,6 +129,15 @@ func ParseFilename(name string) (fileType int, fid uint64, err error) {
 	return UnknownFileType, 0, nil
 }
 
+// namespace is fixed size
+func MergedKey(ns, key []byte) []byte {
+	mergedKey := make([]byte, len(ns)+len(key))
+	copy(mergedKey, ns)
+	copy(mergedKey[len(ns):], key)
+
+	return mergedKey
+}
+
 func GenSha1NS(ns string) []byte {
 	hash := sha1.Sum([]byte(ns))
 	return hash[:]

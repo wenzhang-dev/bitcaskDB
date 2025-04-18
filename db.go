@@ -35,15 +35,6 @@ var (
 	ErrKeySoftDeleted = errors.New("key soft delete")
 )
 
-// namespace is fixed size
-func MergedKey(ns, key []byte) []byte {
-	mergedKey := make([]byte, len(ns)+len(key))
-	copy(mergedKey, ns)
-	copy(mergedKey[len(ns):], key)
-
-	return mergedKey
-}
-
 type WriteOptions struct {
 	Sync bool
 }

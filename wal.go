@@ -455,7 +455,7 @@ func (wal *Wal) recordPhysicalSize(offset, size uint64) uint64 {
 }
 
 // read one record from specifc offset and size
-func (wal *Wal) ReadRecord(offset, size uint64) (record []byte, err error) {
+func (wal *Wal) ReadRecord(offset, size uint64, verifyChecksum bool) (record []byte, err error) {
 	if !wal.Valid() {
 		return nil, ErrWalUnavailable
 	}
@@ -489,7 +489,7 @@ func (wal *Wal) ReadRecord(offset, size uint64) (record []byte, err error) {
 		data := buffer[expectedOff : expectedOff+length]
 		expectedOff += length
 
-		if ComputeCRC32(data) != crc {
+		if verifyChecksum && ComputeCRC32(data) != crc {
 			return nil, ErrWalMismatchCRC
 		}
 

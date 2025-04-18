@@ -187,6 +187,9 @@ func (db *DBImpl) doBackgroundTask() {
 }
 
 func (db *DBImpl) Write(batch *Batch, opts *WriteOptions) error {
+	if opts == nil {
+		opts = &WriteOptions{Sync: false}
+	}
 	w := newWriter(batch, &db.mu, opts.Sync)
 
 	db.mu.Lock()
@@ -416,7 +419,10 @@ func (db *DBImpl) Get(ns, key []byte, opts *ReadOptions) (val []byte, meta *Meta
 	defer wal.Unref()
 
 	// reach here: read the wal file without any lock
-	if recordBytes, err = wal.ReadRecord(off, sz); err != nil {
+	if opts == nil {
+		opts = &ReadOptions{VerifyChecksum: true}
+	}
+	if recordBytes, err = wal.ReadRecord(off, sz, opts.VerifyChecksum); err != nil {
 		return nil, nil, errors.Join(err, ErrKeyNotFound)
 	}
 

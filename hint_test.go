@@ -70,7 +70,7 @@ func TestHint_NewHintByWal(t *testing.T) {
 		assert.Equal(t, hintRecord.ns, ns1[:])
 		assert.Equal(t, hintRecord.key, []byte("test-key"+strconv.Itoa(itNum)))
 
-		recordBytes, err := wal.ReadRecord(hintRecord.off, hintRecord.size)
+		recordBytes, err := wal.ReadRecord(hintRecord.off, hintRecord.size, true)
 		assert.Nil(t, err)
 
 		readRecord, err := RecordFromBytes(recordBytes, wal.BaseTime())
