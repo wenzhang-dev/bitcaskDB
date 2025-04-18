@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func setupManifestTxn(t *testing.T) *ManifestTxn {
+func setupManifestTxn(t *testing.T) (*ManifestTxn, func()) {
 	dir := "./test_bitcask_db"
 	_ = os.RemoveAll(dir)
 
@@ -19,11 +19,14 @@ func setupManifestTxn(t *testing.T) *ManifestTxn {
 
 	txn, err := manifest.NewTxn()
 	assert.Nil(t, err)
-	return txn
+	return txn, func() {
+		os.RemoveAll(dir)
+	}
 }
 
 func TestManifestTxn_Commit(t *testing.T) {
-	txn := setupManifestTxn(t)
+	txn, closer := setupManifestTxn(t)
+	defer closer()
 
 	manifest := txn.manifest
 	dir := manifest.dir
@@ -103,7 +106,8 @@ func TestManifestTxn_Commit(t *testing.T) {
 }
 
 func TestManifestTxn_Abort(t *testing.T) {
-	txn := setupManifestTxn(t)
+	txn, closer := setupManifestTxn(t)
+	defer closer()
 
 	manifest := txn.manifest
 	dir := manifest.dir
