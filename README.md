@@ -12,6 +12,8 @@
 
 bitcaskDB is a light-weight, fast, fixed capacity key/value storage engine base on bitcask storage model.
 
+Its biggest feature is that it caches the index of key-value pairs in memory, and each query only requires a single disk seek. Based on the calculation of small objects with 100 bytes of key and 4KB of value, caching 10 million objects requires about 1GB of memory and 40GB of disk space. On the contrary, if a full-memory caching solution like redis or memcached is used, the memory overhead is very high.
+
 
 # Motivation
 
