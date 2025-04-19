@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
-	"sync"
 )
 
 const (
@@ -98,15 +97,10 @@ func (o *Options) Init() {
 		o.CompactionPickerRatio = DefaultCompactionPickerRatio
 	}
 
-	optsInitOnce.Do(func() {
-		gOpts = o
-	})
+	gOpts = o
 }
 
-var (
-	gOpts        *Options
-	optsInitOnce sync.Once
-)
+var gOpts *Options
 
 // read-only
 func GetOptions() *Options {

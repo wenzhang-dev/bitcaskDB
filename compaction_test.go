@@ -387,3 +387,36 @@ func TestCompaction_TwoNonFullRewriteWals2(t *testing.T) {
 		}
 	}
 }
+
+func TestCompaction_ReclaimDiskUsage(t *testing.T) {
+	db := setupDB(t)
+	defer teardownDB(db)
+
+	// the wal capacity is 1MB
+	// one wal can store up to 256 elements
+	meta := NewMeta(nil)
+	bin4K := GenNKBytes(4)
+	ns := sha1Bytes("compaction")
+	opts := &WriteOptions{}
+
+	for i := 0; i < 100; i++ {
+		key := sha1Bytes(strconv.Itoa(i))
+		err := db.Put(ns[:], key[:], bin4K, meta, opts)
+		assert.Nil(t, err)
+	}
+
+	// only one wal
+	assert.Equal(t, len(db.manifest.wals), 1)
+
+	// manual rotate wal
+	_, err := db.manifest.RotateWal()
+	assert.Nil(t, err)
+	assert.Equal(t, len(db.manifest.wals), 2)
+
+	// trigger reclaim disk usage
+	expect := int64(db.manifest.ActiveWal().Size() - 1)
+	db.reclaimDiskUsage(expect)
+
+	// one wal has been removed
+	assert.Equal(t, len(db.manifest.wals), 1)
+}

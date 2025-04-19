@@ -120,12 +120,12 @@ func (w *HintWriter) Flush() error {
 	return w.rewriter.Flush()
 }
 
-func NewHintByWal(wal *Wal) error {
+func NewHintByWal(wal *Wal) (uint64, error) {
 	// hint wal use the same fid and base time
 	hintPath := TmpPath(wal.Dir(), wal.fid)
 	writer, err := NewHintWriter(hintPath, wal.fid, int64(wal.BaseTime()))
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	defer writer.Close()
@@ -146,11 +146,15 @@ func NewHintByWal(wal *Wal) error {
 		return writer.AppendRecord(hintRecord)
 	})
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	// rename hint file
-	return writer.Wal().Rename(HintFilename(wal.fid))
+	if err = writer.Wal().Rename(HintFilename(wal.fid)); err != nil {
+		return 0, err
+	}
+
+	return writer.Wal().Size(), nil
 }
 
 func IterateHint(hint *Wal, cb func(record *HintRecord) error) error {

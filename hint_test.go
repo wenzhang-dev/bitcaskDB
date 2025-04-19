@@ -56,8 +56,9 @@ func TestHint_NewHintByWal(t *testing.T) {
 	wal.Flush()
 
 	// test hint
-	err := NewHintByWal(wal)
+	fileSize, err := NewHintByWal(wal)
 	assert.Nil(t, err)
+	assert.True(t, fileSize > 0)
 
 	hintPath := HintPath(wal.Dir(), wal.Fid())
 	hint, err := LoadWal(hintPath, wal.Fid())

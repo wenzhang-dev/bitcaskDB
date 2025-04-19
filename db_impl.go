@@ -380,7 +380,12 @@ func (db *DBImpl) ensureRoomForWrite() error {
 		// don't need to care if it succeeds or not
 		// if it's unsuccessful, it will be cleaned up automatically
 		go func() {
-			_ = NewHintByWal(old)
+			fileSize, err := NewHintByWal(old)
+			if err == nil && fileSize != 0 {
+				db.mu.Lock()
+				db.hintSizeCache[old.Fid()] = int64(fileSize)
+				db.mu.Unlock()
+			}
 		}()
 	}
 

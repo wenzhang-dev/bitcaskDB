@@ -355,10 +355,15 @@ func (db *DBImpl) reclaimDiskUsage(expect int64) {
 	}
 
 	compactionWals := db.getCompactionWalsLocked()
-	files := make([]LogFile, len(db.manifest.wals))
+	files := make([]LogFile, 0, len(db.manifest.wals))
 	for fid := range db.manifest.wals {
 		// exclude the compation wals
 		if slices.Contains(compactionWals, fid) {
+			continue
+		}
+
+		// skip the active wal
+		if fid == db.manifest.ActiveWal().Fid() {
 			continue
 		}
 
@@ -369,7 +374,7 @@ func (db *DBImpl) reclaimDiskUsage(expect int64) {
 	}
 
 	// sort by create time in positive order
-	sort.Slice(files, func(i int, j int) bool {
+	sort.Slice(files, func(i, j int) bool {
 		return files[i].wal.CreateTime() < files[j].wal.CreateTime()
 	})
 
@@ -396,6 +401,14 @@ func (db *DBImpl) reclaimDiskUsage(expect int64) {
 
 	if err = db.manifest.LogAndApply(edit); err != nil {
 		db.bgErr = errors.Join(err, ErrDiskOutOfLimit)
+	}
+
+	// delete the related hint wals
+	for idx := range deleteFiles {
+		// ignore errors
+		_ = os.Remove(HintPath(db.opts.Dir, deleteFiles[idx].fid))
+
+		delete(db.hintSizeCache, deleteFiles[idx].fid)
 	}
 }
 

@@ -10,7 +10,10 @@ import (
 	"github.com/wenzhang-dev/bitcaskDB"
 )
 
-var db bitcask.DB
+var (
+	dir string
+	db  *bitcask.DBImpl
+)
 
 const BatchSize = 50
 
@@ -24,7 +27,7 @@ var (
 )
 
 func newDB(b *testing.B) {
-	dir := "./bitcaskDB"
+	dir = "./bitcaskDB"
 	_ = os.RemoveAll(dir)
 	_ = os.MkdirAll(dir, os.ModePerm)
 
