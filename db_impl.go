@@ -140,9 +140,17 @@ func (db *DBImpl) recoverFromWals() error {
 func (db *DBImpl) recoverFromWal(fid uint64) error {
 	// prefer hint wal
 	hintPath := HintPath(db.opts.Dir, fid)
-	err := RecoverFromHint(hintPath, fid, func(record *HintRecord) error {
-		return db.index.Put(record.ns, record.key, fid, record.off, record.size, nil)
-	})
+	hint, err := LoadWal(hintPath, fid)
+	if err == nil {
+		defer hint.Close()
+
+		// cache hint file size
+		db.hintSizeCache[hint.Fid()] = int64(hint.Size())
+
+		err = IterateHint(hint, func(record *HintRecord) error {
+			return db.index.Put(record.ns, record.key, fid, record.off, record.size, nil)
+		})
+	}
 
 	if err == nil {
 		return nil

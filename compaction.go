@@ -75,7 +75,7 @@ func (c *Compaction) Finalize() error {
 
 	// corner case: empty output wal
 	// otherwise, we should add the output wal to manifest
-	if c.output.Size() == SuperBlockSize {
+	if c.output.Empty() {
 		return nil
 	}
 
@@ -99,7 +99,7 @@ func (c *Compaction) Destroy() {
 	defer c.mu.Unlock()
 
 	// corner case: empty hint file
-	if c.hintWriter.Wal().Size() == SuperBlockSize {
+	if c.hintWriter.Wal().Empty() {
 		c.hintWriter.Wal().Unref()
 	}
 
@@ -242,6 +242,7 @@ func (db *DBImpl) doCompactionWork(compaction *Compaction) error {
 		db.mu.Lock()
 		defer db.mu.Unlock()
 
+		// commit the txn
 		edit := &ManifestEdit{
 			deleteFiles: compaction.edit.deleteFiles,
 		}
@@ -253,6 +254,16 @@ func (db *DBImpl) doCompactionWork(compaction *Compaction) error {
 		_ = db.manifest.CleanFiles(false)
 
 		db.compaction = nil
+
+		// cache the hint file size
+		for idx := range compaction.edit.addFiles {
+			logFile := compaction.edit.addFiles[idx]
+			db.hintSizeCache[logFile.fid] = int64(logFile.wal.Size())
+		}
+
+		for idx := range compaction.edit.deleteFiles {
+			delete(db.hintSizeCache, compaction.edit.deleteFiles[idx].fid)
+		}
 
 		return nil
 	}
@@ -417,29 +428,13 @@ func (db *DBImpl) reclaimDiskUsage(expect int64) {
 func (db *DBImpl) approximateDiskUsageLocked() (int64, error) {
 	var usage int64
 
-	fileSize := func(path string) int64 {
-		fi, err := os.Stat(path)
-		if err != nil {
-			return 0
-		}
-		return fi.Size()
-	}
-
 	// manifest file size
 	usage += int64(db.manifest.FileSize())
 
 	// hint and wal file size
 	for fid, info := range db.manifest.wals {
 		usage += int64(info.wal.Size())
-
-		hintSize, exists := db.hintSizeCache[fid]
-		if !exists {
-			hintSize = fileSize(HintPath(db.manifest.dir, fid))
-			if hintSize != 0 {
-				db.hintSizeCache[fid] = hintSize
-			}
-		}
-		usage += hintSize
+		usage += db.hintSizeCache[fid]
 	}
 
 	// remove the un-used hint cache items

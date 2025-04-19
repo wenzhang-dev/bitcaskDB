@@ -321,6 +321,10 @@ func (wal *Wal) Size() uint64 {
 	return wal.size
 }
 
+func (wal *Wal) Empty() bool {
+	return wal.size == SuperBlockSize && wal.buf.Len() == 0
+}
+
 // flush the internal buffer
 func (wal *Wal) Flush() error {
 	if wal.buf.Len() == 0 {
