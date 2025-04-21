@@ -2,6 +2,7 @@ package bitcask
 
 import (
 	"bytes"
+	"sync"
 	"time"
 
 	"github.com/spaolacci/murmur3"
@@ -41,7 +42,8 @@ type IndexValue struct {
 }
 
 type Index struct {
-	maps *ShardMap[[]byte, IndexValue]
+	ivPool sync.Pool
+	maps   *ShardMap[[]byte, IndexValue]
 }
 
 type IndexOptions struct {
@@ -71,7 +73,14 @@ func NewIndex(opts *IndexOptions) (*Index, error) {
 		return nil, err
 	}
 
-	return &Index{maps}, nil
+	return &Index{
+		maps: maps,
+		ivPool: sync.Pool{
+			New: func() any {
+				return &IndexValue{}
+			},
+		},
+	}, nil
 }
 
 func (i *Index) Get(ns, key []byte) (fid uint64, off uint64, sz uint64, err error) {
@@ -111,6 +120,8 @@ func (i *Index) Delete(ns, key []byte, stat *WriteStat) error {
 	if stat != nil && old != nil {
 		stat.FreeBytes = old.valueSize
 		stat.FreeWalFid = old.fid
+
+		i.ivPool.Put(old)
 	}
 
 	return nil
@@ -128,6 +139,8 @@ func (i *Index) SoftDelete(ns, key []byte, stat *WriteStat) error {
 	if stat != nil && old != nil {
 		stat.FreeBytes = old.valueSize
 		stat.FreeWalFid = old.fid
+
+		i.ivPool.Put(old)
 	}
 
 	return nil
@@ -135,11 +148,13 @@ func (i *Index) SoftDelete(ns, key []byte, stat *WriteStat) error {
 
 func (i *Index) Put(ns, key []byte, fid uint64, off uint64, sz uint64, stat *WriteStat) error {
 	mergedKey := MergedKey(ns, key)
-	old, err := i.maps.Set(&mergedKey, &IndexValue{
-		valueOff:  off,
-		valueSize: sz,
-		fid:       fid,
-	})
+
+	iv, _ := i.ivPool.Get().(*IndexValue)
+	iv.fid = fid
+	iv.valueOff = off
+	iv.valueSize = sz
+
+	old, err := i.maps.Set(&mergedKey, iv)
 	if err != nil {
 		return err
 	}
@@ -147,6 +162,8 @@ func (i *Index) Put(ns, key []byte, fid uint64, off uint64, sz uint64, stat *Wri
 	if stat != nil && old != nil {
 		stat.FreeBytes = old.valueSize
 		stat.FreeWalFid = old.fid
+
+		i.ivPool.Put(old)
 	}
 
 	return nil

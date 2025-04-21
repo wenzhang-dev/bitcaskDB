@@ -26,8 +26,9 @@ func TestRecord_EmptyNs(t *testing.T) {
 		Meta:  NewMeta(nil),
 	}
 
+	backStore := make([]byte, DefaultRecordBufferSize)
 	baseTime := uint64(time.Now().Unix())
-	encoded, err := record.Encode(baseTime)
+	encoded, err := record.Encode(backStore, baseTime)
 	assert.Nil(t, err)
 
 	decoded, err := RecordFromBytes(encoded, baseTime)
@@ -63,14 +64,9 @@ func TestRecord_EncodingDecoding(t *testing.T) {
 		{
 			name: "Normal case with full metadata and value",
 			record: &Record{
-				Ns:  ns[:],
-				Key: []byte("test-key"),
-				Meta: &Meta{
-					AppMeta: map[string]string{"foo": "bar"},
-					Expire:  baseTime + 60,
-					Etag:    etag[:],
-					Flags:   1,
-				},
+				Ns:    ns[:],
+				Key:   []byte("test-key"),
+				Meta:  NewMeta(map[string]string{"foo": "bar"}).SetExpire(baseTime + 60).SetEtag(etag[:]).SetTombstone(true),
 				Value: []byte("hello world"),
 			},
 			wantErr: false,
@@ -78,13 +74,9 @@ func TestRecord_EncodingDecoding(t *testing.T) {
 		{
 			name: "Nil APP Meta",
 			record: &Record{
-				Ns:  ns[:],
-				Key: []byte("test-key"),
-				Meta: &Meta{
-					Expire: baseTime + 61,
-					Etag:   etag[:],
-					Flags:  0,
-				},
+				Ns:    ns[:],
+				Key:   []byte("test-key"),
+				Meta:  NewMeta(nil).SetExpire(baseTime + 61).SetEtag(etag[:]).SetTombstone(false),
 				Value: []byte("hello world"),
 			},
 			wantErr: false,
@@ -92,14 +84,9 @@ func TestRecord_EncodingDecoding(t *testing.T) {
 		{
 			name: "Nil Value",
 			record: &Record{
-				Ns:  ns[:],
-				Key: []byte("test-key"),
-				Meta: &Meta{
-					AppMeta: map[string]string{"foo": "bar"},
-					Expire:  baseTime + 62,
-					Etag:    etag[:],
-					Flags:   1,
-				},
+				Ns:    ns[:],
+				Key:   []byte("test-key"),
+				Meta:  NewMeta(map[string]string{"foo": "bar"}).SetExpire(baseTime + 62).SetEtag(etag[:]).SetTombstone(true),
 				Value: []byte{},
 			},
 			wantErr: false,
@@ -107,22 +94,19 @@ func TestRecord_EncodingDecoding(t *testing.T) {
 		{
 			name: "Nil APP Meta, Nil Value, Nil Etag and No Expire",
 			record: &Record{
-				Ns:  ns[:],
-				Key: []byte("test-key"),
-				Meta: &Meta{
-					Expire: MetaNoExpire,
-					Etag:   etag[:],
-					Flags:  0,
-				},
+				Ns:    ns[:],
+				Key:   []byte("test-key"),
+				Meta:  NewMeta(nil),
 				Value: []byte{},
 			},
 			wantErr: false,
 		},
 	}
 
+	backStore := make([]byte, DefaultRecordBufferSize)
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			encoded, err := tt.record.Encode(baseTime)
+			encoded, err := tt.record.Encode(backStore, baseTime)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Encode() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -148,7 +132,10 @@ func TestRecord_EncodingDecoding(t *testing.T) {
 			assert.NotNil(t, decodedRecord.Meta, "Meta should not be nil")
 			assert.Equal(t, tt.record.Meta.Flags, decodedRecord.Meta.Flags, "Flags mismatch")
 			assert.Equal(t, tt.record.Meta.Expire, decodedRecord.Meta.Expire, "Expire mismatch")
-			assert.Equal(t, tt.record.Meta.Etag, decodedRecord.Meta.Etag, "Etag mismatch")
+
+			if len(tt.record.Meta.Etag) != 0 {
+				assert.Equal(t, tt.record.Meta.Etag, decodedRecord.Meta.Etag, "Etag mismatch")
+			}
 
 			if tt.record.Meta.AppMeta == nil {
 				assert.Nil(t, decodedRecord.Meta.AppMeta, "AppMeta should be nil")

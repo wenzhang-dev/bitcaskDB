@@ -34,6 +34,7 @@ func TestHint_NewHintByWal(t *testing.T) {
 	defer wal.Unref()
 
 	ns1 := sha1Bytes("namespace")
+	backStore := make([]byte, DefaultRecordBufferSize)
 	baseTime := uint64(time.Now().Unix())
 	record := &Record{
 		Ns:    ns1[:],
@@ -46,7 +47,7 @@ func TestHint_NewHintByWal(t *testing.T) {
 		key := []byte("test-key" + strconv.Itoa(i))
 		record.Key = key
 
-		bytes, err := record.Encode(baseTime)
+		bytes, err := record.Encode(backStore, baseTime)
 		assert.Nil(t, err)
 
 		_, err = wal.WriteRecord(bytes)

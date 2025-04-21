@@ -276,6 +276,9 @@ func (db *DBImpl) doCompactionWork(compaction *Compaction) error {
 }
 
 func (db *DBImpl) compactOneWal(dst *WalRewriter, hintWriter *HintWriter, src *Wal) error {
+	bufPtr, _ := db.recordPool.Get().(*[]byte)
+	defer db.recordPool.Put(bufPtr)
+
 	return IterateRecord(src, func(record *Record, foff, _ uint64) error {
 		// the foff points to the start offset of data in the wal
 		// however, the offset used by ReadRecord of wal expects the start offset of data header
@@ -285,7 +288,7 @@ func (db *DBImpl) compactOneWal(dst *WalRewriter, hintWriter *HintWriter, src *W
 			return nil
 		}
 
-		recordBytes, err := record.Encode(dst.Wal().BaseTime())
+		recordBytes, err := record.Encode(*bufPtr, dst.Wal().BaseTime())
 		if err != nil {
 			return err
 		}

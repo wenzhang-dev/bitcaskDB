@@ -52,9 +52,6 @@ func newDB(b *testing.B) {
 }
 
 func BenchmarkPutGet(b *testing.B) {
-	newDB(b)
-	defer db.Close()
-
 	b.Run("put4K", benchmarkPut)
 	b.Run("batchPut4K", benchmarkBatchPut)
 	b.Run("get4K", benchmarkGet)
@@ -64,6 +61,9 @@ func BenchmarkPutGet(b *testing.B) {
 }
 
 func benchmarkPut(b *testing.B) {
+    newDB(b)
+    defer db.Close()
+
 	meta := bitcask.NewMeta(nil)
 	opts := &bitcask.WriteOptions{}
 
@@ -77,6 +77,9 @@ func benchmarkPut(b *testing.B) {
 }
 
 func benchmarkConcurrentPut(b *testing.B) {
+    newDB(b)
+    defer db.Close()
+
 	meta := bitcask.NewMeta(nil)
 	opts := &bitcask.WriteOptions{}
 
@@ -95,6 +98,9 @@ func benchmarkConcurrentPut(b *testing.B) {
 }
 
 func benchmarkBatchPut(b *testing.B) {
+    newDB(b)
+    defer db.Close()
+
 	meta := bitcask.NewMeta(nil)
 	opts := &bitcask.WriteOptions{}
 
@@ -135,6 +141,9 @@ func getPrepare(b *testing.B) {
 }
 
 func benchmarkGet(b *testing.B) {
+    newDB(b)
+    defer db.Close()
+
 	getPrepare(b)
 
 	rOpts := &bitcask.ReadOptions{}
@@ -144,11 +153,14 @@ func benchmarkGet(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		_, _, err := db.Get(ns[:], genTestKey(i%100000), rOpts)
-		assert.Nilf(b, err, "i: %v", i)
+		assert.Nilf(b, err, "i: %v, err: %v", i, err)
 	}
 }
 
 func benchmarkConcurrentGet(b *testing.B) {
+    newDB(b)
+    defer db.Close()
+
 	getPrepare(b)
 
 	rOpts := &bitcask.ReadOptions{}

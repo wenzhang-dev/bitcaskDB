@@ -81,15 +81,15 @@ func (i *WalIterator) Next() (uint64, []byte, error) {
 			return 0, nil, i.err
 		}
 
-		// copy the data
-		record = append(record, data...)
-
 		switch recordType {
 		case RecordFull:
-			return off, record, nil
+			// reference the backing store of slice
+			return off, data, nil
 		case RecordFirst, RecordMiddle:
 			// Continue reading next chunk
+			record = append(record, data...)
 		case RecordLast:
+			record = append(record, data...)
 			return off, record, nil
 		default:
 			i.err = ErrWalUnknownRecordType

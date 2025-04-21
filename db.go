@@ -78,6 +78,8 @@ type Options struct {
 	CompactionPickerRatio float64
 
 	DisableCompaction bool
+
+	RecordBufferSize uint64
 }
 
 func (o *Options) Init() {
@@ -95,6 +97,10 @@ func (o *Options) Init() {
 
 	if o.CompactionPickerRatio <= 0 {
 		o.CompactionPickerRatio = DefaultCompactionPickerRatio
+	}
+
+	if o.RecordBufferSize <= 0 {
+		o.RecordBufferSize = DefaultRecordBufferSize
 	}
 
 	gOpts = o

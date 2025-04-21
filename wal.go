@@ -378,7 +378,7 @@ func (wal *Wal) WriteRecord(record []byte) (uint64, error) {
 	var offset uint64
 	begin := true
 	left := uint64(len(record))
-	padding := []byte{0, 0, 0, 0, 0, 0}
+	padding := [...]byte{0, 0, 0, 0, 0, 0}
 
 	for left > 0 {
 		leftover := BlockSize - (wal.writeOffset(true) % BlockSize)
@@ -409,12 +409,12 @@ func (wal *Wal) WriteRecord(record []byte) (uint64, error) {
 			recordType = RecordMiddle
 		}
 
-		header := make([]byte, RecordHeaderSize)
+		var header [RecordHeaderSize]byte
 		binary.LittleEndian.PutUint32(header[0:], ComputeCRC32(record[:fragmentLength]))
 		binary.LittleEndian.PutUint16(header[4:], uint16(fragmentLength))
 		header[6] = recordType
 
-		if err = wal.appendFile(header); err != nil {
+		if err = wal.appendFile(header[:]); err != nil {
 			return 0, err
 		}
 

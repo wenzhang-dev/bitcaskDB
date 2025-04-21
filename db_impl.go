@@ -61,6 +61,10 @@ type DBImpl struct {
 	// hint wal file is immutable
 	// the cache used to estimate total size of database
 	hintSizeCache map[uint64]int64
+
+	// the record usually a short lived object. so here a pool is used
+	// to ease the pressure on the golang garbage collection
+	recordPool sync.Pool
 }
 
 func NewDB(opts *Options) (*DBImpl, error) {
@@ -94,6 +98,12 @@ func NewDB(opts *Options) (*DBImpl, error) {
 		compacting:    new(atomic.Bool),
 		wallTime:      new(atomic.Int64),
 		hintSizeCache: make(map[uint64]int64),
+		recordPool: sync.Pool{
+			New: func() any {
+				b := make([]byte, opts.RecordBufferSize)
+				return &b
+			},
+		},
 	}
 
 	dbImpl.compacting.Store(false)
@@ -309,8 +319,11 @@ func (db *DBImpl) writeWal(active *Wal, batch *Batch) (locs [][2]uint64, err err
 	var off uint64
 	locs = make([][2]uint64, len(batch.records))
 
+	bufPtr, _ := db.recordPool.Get().(*[]byte)
+	defer db.recordPool.Put(bufPtr)
+
 	for idx := range batch.records {
-		if bin, err = batch.records[idx].Encode(active.BaseTime()); err != nil {
+		if bin, err = batch.records[idx].Encode(*bufPtr, active.BaseTime()); err != nil {
 			active.ResetBuffer()
 			return
 		}

@@ -54,7 +54,7 @@ func (r *Record) ApproximateSize() int {
 	return approximateRecordHeaderSize + len(r.Key) + len(r.Value) + r.Meta.AppMetaApproximateSize()
 }
 
-func (r *Record) Encode(baseTime uint64) ([]byte, error) {
+func (r *Record) Encode(backStore []byte, baseTime uint64) ([]byte, error) {
 	flag := byte(0)
 	if len(r.Meta.Etag) == 0 {
 		flag |= byte(1 << noEtagFieldBit)
@@ -77,9 +77,12 @@ func (r *Record) Encode(baseTime uint64) ([]byte, error) {
 		expireSize = binary.PutUvarint(expireBytes[:], r.Meta.Expire-baseTime)
 	}
 
-	metaEncoded, err := msgpack.Marshal(r.Meta.AppMeta)
-	if err != nil {
-		return nil, err
+	var err error
+	var metaEncoded []byte
+	if r.Meta.AppMetaSize != 0 {
+		if metaEncoded, err = msgpack.Marshal(r.Meta.AppMeta); err != nil {
+			return nil, err
+		}
 	}
 
 	// try to encode the varint32 fields
@@ -94,8 +97,13 @@ func (r *Record) Encode(baseTime uint64) ([]byte, error) {
 	headerSize := offset + expireSize + len(r.Ns) + len(r.Meta.Etag) + 2
 	totalSize := headerSize + len(r.Key) + len(r.Value) + len(metaEncoded)
 
+	// prefer use the backing store
+	buf := backStore[0:]
+	if totalSize > cap(backStore) {
+		buf = make([]byte, totalSize)
+	}
+
 	offset = 0
-	buf := make([]byte, totalSize)
 
 	// header size
 	buf[0] = byte(headerSize)
@@ -124,10 +132,9 @@ func (r *Record) Encode(baseTime uint64) ([]byte, error) {
 	offset += copy(buf[offset:], r.Value)
 
 	// meta
-	// offset += copy(buf[offset:], metaEncoded)
-	copy(buf[offset:], metaEncoded)
+	offset += copy(buf[offset:], metaEncoded)
 
-	return buf, nil
+	return buf[:offset], nil
 }
 
 func RecordFromBytes(data []byte, baseTime uint64) (*Record, error) {
@@ -206,16 +213,16 @@ func RecordFromBytes(data []byte, baseTime uint64) (*Record, error) {
 	// offset += int(metaLen)
 
 	// app meta deserialization
-	var appMeta map[string]string
+	serverMeta := NewMeta(nil)
 	if metaLen > 0 {
+		var appMeta map[string]string
 		if err := msgpack.Unmarshal(meta, &appMeta); err != nil {
 			return nil, err
 		}
+		serverMeta.SetAppMeta(appMeta)
 	}
 
-	serverMeta := NewMeta(
-		appMeta,
-	).SetEtag(
+	serverMeta.SetEtag(
 		etag,
 	).SetTombstone(
 		flag&(1<<tombstoneFieldBit) != 0,

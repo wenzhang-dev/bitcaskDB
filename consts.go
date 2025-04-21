@@ -10,4 +10,6 @@ const (
 	DefaultCheckDiskUsageInterval = 20
 
 	DefaultCompactionPickerRatio = 0.4
+
+	DefaultRecordBufferSize = 64 * 1024 // 64KB
 )

@@ -19,24 +19,33 @@ type Meta struct {
 }
 
 func NewMeta(appMeta map[string]string) *Meta {
+	meta := &Meta{
+		AppMeta:     nil,
+		AppMetaSize: 0,
+		Expire:      MetaNoExpire,
+		Etag:        nil,
+		Flags:       0,
+	}
+
+	return meta.SetAppMeta(appMeta)
+}
+
+func NewMetaWithTombstone() *Meta {
+	meta := NewMeta(nil)
+	return meta.SetTombstone(true)
+}
+
+func (m *Meta) SetAppMeta(appMeta map[string]string) *Meta {
 	// FIXME: insufficient
 	size := 0
 	for k, v := range appMeta {
 		size += len(k) + len(v)
 	}
 
-	return &Meta{
-		AppMeta:     appMeta,
-		AppMetaSize: size,
-		Expire:      MetaNoExpire,
-		Etag:        nil,
-		Flags:       0,
-	}
-}
+	m.AppMeta = appMeta
+	m.AppMetaSize = size
 
-func NewMetaWithTombstone() *Meta {
-	meta := NewMeta(nil)
-	return meta.SetTombstone(true)
+	return m
 }
 
 func (m *Meta) SetExpire(expire uint64) *Meta {

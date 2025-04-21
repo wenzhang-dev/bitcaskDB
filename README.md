@@ -141,25 +141,31 @@ func main() {
 
 # Benchmark
 
+Here are the benchmarks for reading and writing 4KB:
+
 ```
 go test -bench=PutGet -benchtime=60s -count=3 -timeout=30m
 goos: linux
 goarch: 386
 pkg: github.com/wenzhang-dev/bitcaskDB/bench
 cpu: Intel(R) Xeon(R) Gold 5318N CPU @ 2.10GHz
-BenchmarkPutGet/put4K-8         	  1638007	     59850 ns/op	   15830 B/op	      29 allocs/op
-BenchmarkPutGet/put4K-8         	    1267512	     55906 ns/op	   15506 B/op	      30 allocs/op
-BenchmarkPutGet/put4K-8         	   1292365	     57255 ns/op	   15879 B/op	      30 allocs/op
-BenchmarkPutGet/batchPut4K-8    	   1843651	     35912 ns/op	   10714 B/op	      17 allocs/op
-BenchmarkPutGet/batchPut4K-8    	   2196770	     41649 ns/op	   10367 B/op	      17 allocs/op
-BenchmarkPutGet/batchPut4K-8    	   1830928	     44190 ns/op	   10634 B/op	      17 allocs/op
-BenchmarkPutGet/get4K-8         	   3837634	     21962 ns/op	    9967 B/op	      10 allocs/op
-BenchmarkPutGet/get4K-8         	  3100455	     20038 ns/op	    9967 B/op	      10 allocs/op
-BenchmarkPutGet/get4K-8         	   3805360	     20987 ns/op	    9967 B/op	      10 allocs/op
-BenchmarkPutGet/concurrentGet4K-8    5285563	     13552 ns/op      10229 B/op	      11 allocs/op
-BenchmarkPutGet/concurrentGet4K-8    4609334	     13143 ns/op       9967 B/op	      10 allocs/op
-BenchmarkPutGet/concurrentGet4K-8     4857705	     14518 ns/op       9967 B/op	      10 allocs/op
-BenchmarkPutGet/concurrentPut4K-8     1266792	     60075 ns/op      15856 B/op	      28 allocs/op
-BenchmarkPutGet/concurrentPut4K-8     1657989	     51796 ns/op      14905 B/op	      27 allocs/op
-BenchmarkPutGet/concurrentPut4K-8      1305724	     57538 ns/op      15566 B/op	      28 allocs/op
+BenchmarkPutGet/put4K-8            2533452      26258 ns/op     6134 B/op       21 allocs/op
+BenchmarkPutGet/put4K-8            2973529      27119 ns/op     6204 B/op       21 allocs/op
+BenchmarkPutGet/put4K-8            2847762      28744 ns/op     6144 B/op       21 allocs/op
+BenchmarkPutGet/batchPut4K-8       4454523      17209 ns/op     1358 B/op       11 allocs/op
+BenchmarkPutGet/batchPut4K-8       5207341      17866 ns/op     1354 B/op       11 allocs/op
+BenchmarkPutGet/batchPut4K-8       5636701      17583 ns/op     1374 B/op       11 allocs/op
+BenchmarkPutGet/get4K-8            5846139      14605 ns/op     9966 B/op       10 allocs/op
+BenchmarkPutGet/get4K-8            5375107      12702 ns/op     9966 B/op       10 allocs/op
+BenchmarkPutGet/get4K-8            5688955      14679 ns/op     9966 B/op       10 allocs/op
+BenchmarkPutGet/concurrentGet4K-8  5683243      11450 ns/op     9924 B/op        7 allocs/op
+BenchmarkPutGet/concurrentGet4K-8  9601530       9038 ns/op     9924 B/op        7 allocs/op
+BenchmarkPutGet/concurrentGet4K-8  6073081      11389 ns/op     9924 B/op        7 allocs/op
+BenchmarkPutGet/concurrentPut4K-8  3114558      27029 ns/op     5617 B/op       19 allocs/op
+BenchmarkPutGet/concurrentPut4K-8  3332712      29831 ns/op     5729 B/op       19 allocs/op
+BenchmarkPutGet/concurrentPut4K-8  2990941      24447 ns/op     5668 B/op       19 allocs/op
+PASS
+ok   github.com/wenzhang-dev/bitcaskDB/bench 1781.076s
 ```
+
+The benchmarks with specified disk capacity: [benchmark2](https://github.com/wenzhang-dev/bitcaskDB/blob/main/bench/benchmark2)
