@@ -149,21 +149,24 @@ goos: linux
 goarch: 386
 pkg: github.com/wenzhang-dev/bitcaskDB/bench
 cpu: Intel(R) Xeon(R) Gold 5318N CPU @ 2.10GHz
-BenchmarkPutGet/put4K-8            3368384      29079 ns/op     6162 B/op       20 allocs/op
-BenchmarkPutGet/put4K-8            2746623      26084 ns/op     6150 B/op       20 allocs/op
-BenchmarkPutGet/put4K-8            3274664      26145 ns/op     6186 B/op       20 allocs/op
-BenchmarkPutGet/batchPut4K-8       5798595      17081 ns/op     1359 B/op       11 allocs/op
-BenchmarkPutGet/batchPut4K-8       7300834      18230 ns/op     1379 B/op       11 allocs/op
-BenchmarkPutGet/batchPut4K-8       5403679      18903 ns/op     1368 B/op       11 allocs/op
-BenchmarkPutGet/get4K-8            6199263      14644 ns/op     9966 B/op       10 allocs/op
-BenchmarkPutGet/get4K-8            6532227      13018 ns/op     9966 B/op       10 allocs/op
-BenchmarkPutGet/get4K-8            5358106      13185 ns/op     9966 B/op       10 allocs/op
-BenchmarkPutGet/concurrentGet4K-8  12643495      8655 ns/op     9924 B/op        7 allocs/op
-BenchmarkPutGet/concurrentGet4K-8  6455070       9776 ns/op     9924 B/op        7 allocs/op
-BenchmarkPutGet/concurrentGet4K-8  11416632      9018 ns/op     9924 B/op        7 allocs/op
-BenchmarkPutGet/concurrentPut4K-8  3518620      27436 ns/op     5222 B/op       18 allocs/op
-BenchmarkPutGet/concurrentPut4K-8  3096100      24587 ns/op     5164 B/op       18 allocs/op
-BenchmarkPutGet/concurrentPut4K-8  3344864      24499 ns/op     5301 B/op       18 allocs/op
+BenchmarkPutGet/put4K-8                3368384      29079 ns/op     6162 B/op       20 allocs/op
+BenchmarkPutGet/put4K-8                2746623      26084 ns/op     6150 B/op       20 allocs/op
+BenchmarkPutGet/put4K-8                3274664      26145 ns/op     6186 B/op       20 allocs/op
+BenchmarkPutGet/batchPut4K-8           5798595      17081 ns/op     1359 B/op       11 allocs/op
+BenchmarkPutGet/batchPut4K-8           7300834      18230 ns/op     1379 B/op       11 allocs/op
+BenchmarkPutGet/batchPut4K-8           5403679      18903 ns/op     1368 B/op       11 allocs/op
+BenchmarkPutGet/get4K-8                6199263      14644 ns/op     9966 B/op       10 allocs/op
+BenchmarkPutGet/get4K-8                6532227      13018 ns/op     9966 B/op       10 allocs/op
+BenchmarkPutGet/get4K-8                5358106      13185 ns/op     9966 B/op       10 allocs/op
+BenchmarkPutGet/concurrentGet4K-8      12643495      8655 ns/op     9924 B/op        7 allocs/op
+BenchmarkPutGet/concurrentGet4K-8      6455070       9776 ns/op     9924 B/op        7 allocs/op
+BenchmarkPutGet/concurrentGet4K-8      11416632      9018 ns/op     9924 B/op        7 allocs/op
+BenchmarkPutGet/concurrentPut4K-8      3518620      27436 ns/op     5222 B/op       18 allocs/op
+BenchmarkPutGet/concurrentPut4K-8      3096100      24587 ns/op     5164 B/op       18 allocs/op
+BenchmarkPutGet/concurrentPut4K-8      3344864      24499 ns/op     5301 B/op       18 allocs/op
+BenchmarkPutGet/concurrentBatchPut4K-8 4425745      16762 ns/op     1252 B/op        9 allocs/op
+BenchmarkPutGet/concurrentBatchPut4K-8 6332719      16149 ns/op     1279 B/op        9 allocs/op
+BenchmarkPutGet/concurrentBatchPut4K-8 5473586      15832 ns/op     1276 B/op        9 allocs/op
 PASS
 ok   github.com/wenzhang-dev/bitcaskDB/bench 1758.770s
 ```
