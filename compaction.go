@@ -114,6 +114,10 @@ func (c *Compaction) Destroy() {
 }
 
 func (db *DBImpl) maybeScheduleCompaction() {
+	if db.reclaiming.Load() {
+		return
+	}
+
 	if !db.compacting.CompareAndSwap(false, true) {
 		return
 	}
@@ -350,6 +354,16 @@ func (db *DBImpl) getCompactionWalsLocked() []uint64 {
 }
 
 func (db *DBImpl) reclaimDiskUsage(expect int64) {
+	if !db.reclaiming.CompareAndSwap(false, true) {
+		return
+	}
+
+	// only one reach here
+
+	defer func() {
+		db.reclaiming.Store(false)
+	}()
+
 	db.mu.Lock()
 	defer db.mu.Unlock()
 
@@ -386,6 +400,8 @@ func (db *DBImpl) reclaimDiskUsage(expect int64) {
 		})
 	}
 
+	db.mu.Unlock()
+
 	// sort by create time in positive order
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].wal.CreateTime() < files[j].wal.CreateTime()
@@ -401,6 +417,8 @@ func (db *DBImpl) reclaimDiskUsage(expect int64) {
 
 		idx++
 	}
+
+	db.mu.Lock()
 
 	if len(deleteFiles) == 0 {
 		db.bgErr = ErrDiskOutOfLimit

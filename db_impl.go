@@ -46,6 +46,8 @@ type DBImpl struct {
 	compacting *atomic.Bool
 	compaction *Compaction
 
+	reclaiming *atomic.Bool
+
 	wallTime *atomic.Int64
 
 	// hint wal file is immutable
@@ -90,6 +92,7 @@ func NewDB(opts *Options) (*DBImpl, error) {
 		manifest:      manifest,
 		bgErr:         nil,
 		compacting:    new(atomic.Bool),
+		reclaiming:    new(atomic.Bool),
 		wallTime:      new(atomic.Int64),
 		hintSizeCache: make(map[uint64]int64),
 		recordPool: sync.Pool{
@@ -106,6 +109,7 @@ func NewDB(opts *Options) (*DBImpl, error) {
 	}
 
 	dbImpl.compacting.Store(false)
+	dbImpl.reclaiming.Store(false)
 	dbImpl.wallTime.Store(time.Now().Unix())
 
 	indexOpts := &IndexOptions{
