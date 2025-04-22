@@ -139,23 +139,23 @@ goos: linux
 goarch: 386
 pkg: github.com/wenzhang-dev/bitcaskDB/bench
 cpu: Intel(R) Xeon(R) Gold 5318N CPU @ 2.10GHz
-BenchmarkPutGet/put4K-8            2533452      26258 ns/op     6134 B/op       21 allocs/op
-BenchmarkPutGet/put4K-8            2973529      27119 ns/op     6204 B/op       21 allocs/op
-BenchmarkPutGet/put4K-8            2847762      28744 ns/op     6144 B/op       21 allocs/op
-BenchmarkPutGet/batchPut4K-8       4454523      17209 ns/op     1358 B/op       11 allocs/op
-BenchmarkPutGet/batchPut4K-8       5207341      17866 ns/op     1354 B/op       11 allocs/op
-BenchmarkPutGet/batchPut4K-8       5636701      17583 ns/op     1374 B/op       11 allocs/op
-BenchmarkPutGet/get4K-8            5846139      14605 ns/op     9966 B/op       10 allocs/op
-BenchmarkPutGet/get4K-8            5375107      12702 ns/op     9966 B/op       10 allocs/op
-BenchmarkPutGet/get4K-8            5688955      14679 ns/op     9966 B/op       10 allocs/op
-BenchmarkPutGet/concurrentGet4K-8  5683243      11450 ns/op     9924 B/op        7 allocs/op
-BenchmarkPutGet/concurrentGet4K-8  9601530       9038 ns/op     9924 B/op        7 allocs/op
-BenchmarkPutGet/concurrentGet4K-8  6073081      11389 ns/op     9924 B/op        7 allocs/op
-BenchmarkPutGet/concurrentPut4K-8  3114558      27029 ns/op     5617 B/op       19 allocs/op
-BenchmarkPutGet/concurrentPut4K-8  3332712      29831 ns/op     5729 B/op       19 allocs/op
-BenchmarkPutGet/concurrentPut4K-8  2990941      24447 ns/op     5668 B/op       19 allocs/op
+BenchmarkPutGet/put4K-8            3368384      29079 ns/op     6162 B/op       20 allocs/op
+BenchmarkPutGet/put4K-8            2746623      26084 ns/op     6150 B/op       20 allocs/op
+BenchmarkPutGet/put4K-8            3274664      26145 ns/op     6186 B/op       20 allocs/op
+BenchmarkPutGet/batchPut4K-8       5798595      17081 ns/op     1359 B/op       11 allocs/op
+BenchmarkPutGet/batchPut4K-8       7300834      18230 ns/op     1379 B/op       11 allocs/op
+BenchmarkPutGet/batchPut4K-8       5403679      18903 ns/op     1368 B/op       11 allocs/op
+BenchmarkPutGet/get4K-8            6199263      14644 ns/op     9966 B/op       10 allocs/op
+BenchmarkPutGet/get4K-8            6532227      13018 ns/op     9966 B/op       10 allocs/op
+BenchmarkPutGet/get4K-8            5358106      13185 ns/op     9966 B/op       10 allocs/op
+BenchmarkPutGet/concurrentGet4K-8  12643495      8655 ns/op     9924 B/op        7 allocs/op
+BenchmarkPutGet/concurrentGet4K-8  6455070       9776 ns/op     9924 B/op        7 allocs/op
+BenchmarkPutGet/concurrentGet4K-8  11416632      9018 ns/op     9924 B/op        7 allocs/op
+BenchmarkPutGet/concurrentPut4K-8  3518620      27436 ns/op     5222 B/op       18 allocs/op
+BenchmarkPutGet/concurrentPut4K-8  3096100      24587 ns/op     5164 B/op       18 allocs/op
+BenchmarkPutGet/concurrentPut4K-8  3344864      24499 ns/op     5301 B/op       18 allocs/op
 PASS
-ok   github.com/wenzhang-dev/bitcaskDB/bench 1781.076s
+ok   github.com/wenzhang-dev/bitcaskDB/bench 1758.770s
 ```
 
 指定磁盘容量的压测报告: [benchmark2](https://github.com/wenzhang-dev/bitcaskDB/blob/main/bench/benchmark2)

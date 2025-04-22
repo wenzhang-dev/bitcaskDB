@@ -1,0 +1,19 @@
+go test -bench=GcOverhead -benchtime=300s -count=1 -timeout=30m
+goos: linux
+goarch: 386
+pkg: github.com/wenzhang-dev/bitcaskDB/bench
+cpu: Intel(R) Xeon(R) Gold 5318N CPU @ 2.10GHz
+BenchmarkGcOverhead-8
+GC pause for startup: gc=593.378µs
+GC pause for test: total=150.509947ms, gc=50.599µs, iter=1
+GC pause for startup: gc=428.493µs
+GC pause for test: total=96.802954ms, gc=237.859µs, iter=100
+GC pause for startup: gc=168.307µs
+GC pause for test: total=184.109409ms, gc=161.641µs, iter=10000
+GC pause for startup: gc=466.84µs
+GC pause for test: total=10.405080256s, gc=20.239928ms, iter=1000000
+GC pause for startup: gc=17.419514ms
+GC pause for test: total=11m12.141893096s, gc=451.472974ms, iter=33570260
+33570260	     20146 ns/op	    1499 B/op	      10 allocs/op
+PASS
+ok  	github.com/wenzhang-dev/bitcaskDB/bench	691.811s

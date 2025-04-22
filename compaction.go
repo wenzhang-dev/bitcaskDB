@@ -256,13 +256,12 @@ func (db *DBImpl) doCompactionWork(compaction *Compaction) error {
 		db.compaction = nil
 
 		// cache the hint file size
-		for idx := range compaction.edit.addFiles {
-			logFile := compaction.edit.addFiles[idx]
-			db.hintSizeCache[logFile.fid] = int64(logFile.wal.Size())
-		}
+		hintWal := compaction.hintWriter.Wal()
+		db.hintSizeCache[hintWal.Fid()] = int64(hintWal.Size())
 
 		for idx := range compaction.edit.deleteFiles {
-			delete(db.hintSizeCache, compaction.edit.deleteFiles[idx].fid)
+			logFile := compaction.edit.deleteFiles[idx]
+			delete(db.hintSizeCache, logFile.fid)
 		}
 
 		return nil
@@ -279,6 +278,7 @@ func (db *DBImpl) compactOneWal(dst *WalRewriter, hintWriter *HintWriter, src *W
 	bufPtr, _ := db.recordPool.Get().(*[]byte)
 	defer db.recordPool.Put(bufPtr)
 
+	var hintRecord HintRecord
 	return IterateRecord(src, func(record *Record, foff, _ uint64) error {
 		// the foff points to the start offset of data in the wal
 		// however, the offset used by ReadRecord of wal expects the start offset of data header
@@ -299,14 +299,13 @@ func (db *DBImpl) compactOneWal(dst *WalRewriter, hintWriter *HintWriter, src *W
 		}
 
 		// write dst hint wal
-		hintRecord := &HintRecord{
-			ns:   record.Ns,
-			key:  record.Key,
-			fid:  dst.Wal().Fid(),
-			off:  foff,
-			size: uint64(len(recordBytes)),
-		}
-		return hintWriter.AppendRecord(hintRecord)
+		hintRecord.ns = record.Ns
+		hintRecord.key = record.Key
+		hintRecord.fid = dst.Wal().Fid()
+		hintRecord.off = foff
+		hintRecord.size = uint64(len(recordBytes))
+
+		return hintWriter.AppendRecord(&hintRecord)
 	})
 }
 
@@ -393,7 +392,7 @@ func (db *DBImpl) reclaimDiskUsage(expect int64) {
 	})
 
 	idx := 0
-	var deleteFiles []LogFile
+	deleteFiles := make([]LogFile, 0, 3)
 
 	// reclaim the old wals
 	for usage > expect && idx < len(files) {
@@ -420,9 +419,8 @@ func (db *DBImpl) reclaimDiskUsage(expect int64) {
 	// delete the related hint wals
 	for idx := range deleteFiles {
 		// ignore errors
-		_ = os.Remove(HintPath(db.opts.Dir, deleteFiles[idx].fid))
-
 		delete(db.hintSizeCache, deleteFiles[idx].fid)
+		_ = os.Remove(HintPath(db.opts.Dir, deleteFiles[idx].fid))
 	}
 }
 
