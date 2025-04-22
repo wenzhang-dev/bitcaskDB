@@ -29,16 +29,6 @@ type writer struct {
 	flush bool
 }
 
-func newWriter(batch *Batch, mux *sync.Mutex, flush bool) *writer {
-	return &writer{
-		cond:  sync.NewCond(mux),
-		batch: batch,
-		err:   nil,
-		done:  false,
-		flush: flush,
-	}
-}
-
 type DBImpl struct {
 	fileLock *flock.Flock
 	mu       sync.Mutex
@@ -65,6 +55,10 @@ type DBImpl struct {
 	// the record usually a short lived object. so here a pool is used
 	// to ease the pressure on the golang garbage collection
 	recordPool sync.Pool
+
+	// the writer usually a short lived object. its lifetime is as long
+	// as the write request
+	writerPool sync.Pool
 }
 
 func NewDB(opts *Options) (*DBImpl, error) {
@@ -104,6 +98,11 @@ func NewDB(opts *Options) (*DBImpl, error) {
 				return &b
 			},
 		},
+		writerPool: sync.Pool{
+			New: func() any {
+				return &writer{}
+			},
+		},
 	}
 
 	dbImpl.compacting.Store(false)
@@ -127,6 +126,18 @@ func NewDB(opts *Options) (*DBImpl, error) {
 	go dbImpl.doBackgroundTask()
 
 	return dbImpl, nil
+}
+
+func (db *DBImpl) newWriter(batch *Batch, flush bool) *writer {
+	writer, _ := db.writerPool.Get().(*writer)
+
+	writer.cond = sync.NewCond(&db.mu)
+	writer.batch = batch
+	writer.err = nil
+	writer.done = false
+	writer.flush = flush
+
+	return writer
 }
 
 func (db *DBImpl) recoverFromWals() error {
@@ -208,7 +219,8 @@ func (db *DBImpl) Write(batch *Batch, opts *WriteOptions) error {
 	if opts == nil {
 		opts = &WriteOptions{Sync: false}
 	}
-	w := newWriter(batch, &db.mu, opts.Sync)
+	w := db.newWriter(batch, opts.Sync)
+	defer db.writerPool.Put(w)
 
 	db.mu.Lock()
 	defer db.mu.Unlock()

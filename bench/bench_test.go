@@ -61,8 +61,8 @@ func BenchmarkPutGet(b *testing.B) {
 }
 
 func benchmarkPut(b *testing.B) {
-    newDB(b)
-    defer db.Close()
+	newDB(b)
+	defer db.Close()
 
 	meta := bitcask.NewMeta(nil)
 	opts := &bitcask.WriteOptions{}
@@ -77,8 +77,8 @@ func benchmarkPut(b *testing.B) {
 }
 
 func benchmarkConcurrentPut(b *testing.B) {
-    newDB(b)
-    defer db.Close()
+	newDB(b)
+	defer db.Close()
 
 	meta := bitcask.NewMeta(nil)
 	opts := &bitcask.WriteOptions{}
@@ -98,8 +98,8 @@ func benchmarkConcurrentPut(b *testing.B) {
 }
 
 func benchmarkBatchPut(b *testing.B) {
-    newDB(b)
-    defer db.Close()
+	newDB(b)
+	defer db.Close()
 
 	meta := bitcask.NewMeta(nil)
 	opts := &bitcask.WriteOptions{}
@@ -141,8 +141,8 @@ func getPrepare(b *testing.B) {
 }
 
 func benchmarkGet(b *testing.B) {
-    newDB(b)
-    defer db.Close()
+	newDB(b)
+	defer db.Close()
 
 	getPrepare(b)
 
@@ -158,8 +158,8 @@ func benchmarkGet(b *testing.B) {
 }
 
 func benchmarkConcurrentGet(b *testing.B) {
-    newDB(b)
-    defer db.Close()
+	newDB(b)
+	defer db.Close()
 
 	getPrepare(b)
 
