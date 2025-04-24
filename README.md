@@ -144,31 +144,31 @@ func main() {
 Here are the benchmarks for reading and writing 4KB:
 
 ```
-go test -bench=PutGet -benchtime=60s -count=3 -timeout=30m
+go test -bench=PutGet -benchtime=60s -count=3 -timeout=50m
 goos: linux
-goarch: 386
+goarch: amd64
 pkg: github.com/wenzhang-dev/bitcaskDB/bench
 cpu: Intel(R) Xeon(R) Gold 5318N CPU @ 2.10GHz
-BenchmarkPutGet/put4K-8                3368384      29079 ns/op     6162 B/op       20 allocs/op
-BenchmarkPutGet/put4K-8                2746623      26084 ns/op     6150 B/op       20 allocs/op
-BenchmarkPutGet/put4K-8                3274664      26145 ns/op     6186 B/op       20 allocs/op
-BenchmarkPutGet/batchPut4K-8           5798595      17081 ns/op     1359 B/op       11 allocs/op
-BenchmarkPutGet/batchPut4K-8           7300834      18230 ns/op     1379 B/op       11 allocs/op
-BenchmarkPutGet/batchPut4K-8           5403679      18903 ns/op     1368 B/op       11 allocs/op
-BenchmarkPutGet/get4K-8                6199263      14644 ns/op     9966 B/op       10 allocs/op
-BenchmarkPutGet/get4K-8                6532227      13018 ns/op     9966 B/op       10 allocs/op
-BenchmarkPutGet/get4K-8                5358106      13185 ns/op     9966 B/op       10 allocs/op
-BenchmarkPutGet/concurrentGet4K-8      12643495      8655 ns/op     9924 B/op        7 allocs/op
-BenchmarkPutGet/concurrentGet4K-8      6455070       9776 ns/op     9924 B/op        7 allocs/op
-BenchmarkPutGet/concurrentGet4K-8      11416632      9018 ns/op     9924 B/op        7 allocs/op
-BenchmarkPutGet/concurrentPut4K-8      3518620      27436 ns/op     5222 B/op       18 allocs/op
-BenchmarkPutGet/concurrentPut4K-8      3096100      24587 ns/op     5164 B/op       18 allocs/op
-BenchmarkPutGet/concurrentPut4K-8      3344864      24499 ns/op     5301 B/op       18 allocs/op
-BenchmarkPutGet/concurrentBatchPut4K-8 4425745      16762 ns/op     1252 B/op        9 allocs/op
-BenchmarkPutGet/concurrentBatchPut4K-8 6332719      16149 ns/op     1279 B/op        9 allocs/op
-BenchmarkPutGet/concurrentBatchPut4K-8 5473586      15832 ns/op     1276 B/op        9 allocs/op
+BenchmarkPutGet/put4K-8                  5331782   25259 ns/op   11795 B/op   21 allocs/op
+BenchmarkPutGet/put4K-8                  5130870   25417 ns/op   11767 B/op   21 allocs/op
+BenchmarkPutGet/put4K-8                  4898403   26676 ns/op   11742 B/op   21 allocs/op
+BenchmarkPutGet/batchPut4K-8            10548615   15340 ns/op    1695 B/op   11 allocs/op
+BenchmarkPutGet/batchPut4K-8             9220388   14278 ns/op    1694 B/op   11 allocs/op
+BenchmarkPutGet/batchPut4K-8            10363459   15019 ns/op    1686 B/op   11 allocs/op
+BenchmarkPutGet/get4K-8                  8812342    8076 ns/op   10119 B/op   10 allocs/op
+BenchmarkPutGet/get4K-8                  7963098    7952 ns/op   10119 B/op   10 allocs/op
+BenchmarkPutGet/get4K-8                  8480240    7997 ns/op   10119 B/op   10 allocs/op
+BenchmarkPutGet/concurrentGet4K-8       17233309    4427 ns/op   10044 B/op    7 allocs/op
+BenchmarkPutGet/concurrentGet4K-8       26745726    3681 ns/op   10044 B/op    7 allocs/op
+BenchmarkPutGet/concurrentGet4K-8       29305041    3654 ns/op   10044 B/op    7 allocs/op
+BenchmarkPutGet/concurrentPut4K-8        4558645   19829 ns/op    8340 B/op   18 allocs/op
+BenchmarkPutGet/concurrentPut4K-8        4433334   18664 ns/op   10031 B/op   18 allocs/op
+BenchmarkPutGet/concurrentPut4K-8        4366149   17031 ns/op    8175 B/op   17 allocs/op
+BenchmarkPutGet/concurrentBatchPut4K-8   9443377   12520 ns/op    1527 B/op    9 allocs/op
+BenchmarkPutGet/concurrentBatchPut4K-8  11338162   12429 ns/op    1517 B/op    9 allocs/op
+BenchmarkPutGet/concurrentBatchPut4K-8  11394081   12101 ns/op    1510 B/op    9 allocs/op
 PASS
-ok   github.com/wenzhang-dev/bitcaskDB/bench 1758.770s
+ok   github.com/wenzhang-dev/bitcaskDB/bench 2310.401s
 ```
 
 Here, several popular KV storage engines are tested for reading and writing 4KB, and their RSS usages are recorded.
