@@ -3,12 +3,17 @@ package bitcask
 import (
 	"errors"
 	"math/rand"
+	"path/filepath"
 	"slices"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/gofrs/flock"
+
+	"github.com/rs/zerolog"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var (
@@ -61,6 +66,8 @@ type DBImpl struct {
 	// the writer usually a short lived object. its lifetime is as long
 	// as the write request
 	writerPool sync.Pool
+
+	logger *zerolog.Logger
 }
 
 func NewDB(opts *Options) (*DBImpl, error) {
@@ -111,6 +118,9 @@ func NewDB(opts *Options) (*DBImpl, error) {
 	dbImpl.compacting.Store(false)
 	dbImpl.reclaiming.Store(false)
 	dbImpl.wallTime.Store(time.Now().Unix())
+	dbImpl.initLogger()
+
+	dbImpl.logger.Info().Msg("database bootstrap")
 
 	indexOpts := &IndexOptions{
 		Capacity:             opts.IndexCapacity,
@@ -119,17 +129,48 @@ func NewDB(opts *Options) (*DBImpl, error) {
 		SampleKeys:           opts.IndexSampleKeys,
 		Helper:               dbImpl,
 	}
+
+	dbImpl.logger.Info().Msg("init index")
 	if dbImpl.index, err = NewIndex(indexOpts); err != nil {
+		dbImpl.logger.Err(err).Msg("failed to init index")
 		return nil, errors.Join(err, ErrNewIndex)
 	}
 
+	dbImpl.logger.Info().Msg("recover wals")
 	if err = dbImpl.recoverFromWals(); err != nil {
+		dbImpl.logger.Err(err).Msg("failed to recover wals")
 		return nil, errors.Join(err, ErrRecoverDB)
 	}
 
+	dbImpl.logger.Info().Msg("start background task")
 	go dbImpl.doBackgroundTask()
 
 	return dbImpl, nil
+}
+
+func (db *DBImpl) initLogger() {
+	file := &lumberjack.Logger{
+		Filename:   filepath.Join(db.opts.LogDir, db.opts.LogFile),
+		MaxSize:    int(db.opts.LogMaxSize),
+		MaxBackups: int(db.opts.LogMaxBackups),
+		Compress:   false,
+	}
+
+	zerolog.CallerMarshalFunc = func(pc uintptr, file string, line int) string {
+		return filepath.Base(file) + ":" + strconv.Itoa(line)
+	}
+
+	w := zerolog.ConsoleWriter{
+		NoColor:    true,
+		Out:        file,
+		TimeFormat: "2006-01-02 15:04:05",
+	}
+
+	logger := zerolog.New(w).With().Timestamp().Caller().Logger().Level(
+		zerolog.Level(db.opts.LogLevel),
+	)
+
+	db.logger = &logger
 }
 
 func (db *DBImpl) newWriter(batch *Batch, flush bool) *writer {
@@ -193,8 +234,8 @@ func (db *DBImpl) recoverFromWal(fid uint64) error {
 }
 
 func (db *DBImpl) doBackgroundTask() {
-	checkDiskUsageInterval := int(GetOptions().CheckDiskUsageInterval)
-	compactionTriggerInterval := int(GetOptions().CompactionTriggerInterval)
+	checkDiskUsageInterval := int(db.opts.CheckDiskUsageInterval)
+	compactionTriggerInterval := int(db.opts.CompactionTriggerInterval)
 
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
@@ -210,11 +251,11 @@ func (db *DBImpl) doBackgroundTask() {
 		}
 
 		if tickNum%checkDiskUsageInterval == 0 && db.opts.DiskUsageLimited > 0 {
-			db.reclaimDiskUsage(int64(db.opts.DiskUsageLimited))
+			go db.reclaimDiskUsage(int64(db.opts.DiskUsageLimited))
 		}
 
 		if tickNum%compactionTriggerInterval == 0 && !db.opts.DisableCompaction {
-			db.maybeScheduleCompaction()
+			go db.maybeScheduleCompaction()
 		}
 	}
 }
@@ -261,6 +302,7 @@ func (db *DBImpl) Write(batch *Batch, opts *WriteOptions) error {
 		if err == nil && opts.Sync {
 			if err = active.Sync(); err != nil {
 				syncErr = err
+				db.logger.Err(err).Msg("failed to sync wal")
 			}
 		}
 
@@ -279,6 +321,7 @@ func (db *DBImpl) Write(batch *Batch, opts *WriteOptions) error {
 			// apply the manifest edit but don't persist
 			if err = db.manifest.Apply(&ManifestEdit{freeBytes: writeStats}); err != nil {
 				db.bgErr = err
+				db.logger.Err(err).Msg("failed to apply the write stats")
 			}
 		}
 	}
@@ -410,15 +453,18 @@ func (db *DBImpl) ensureRoomForWrite() error {
 		old, err := db.manifest.RotateWal()
 		if err != nil {
 			db.bgErr = err
+			db.logger.Err(err).Msg("failed to rotate wal")
 			return err
 		}
+
+		db.logger.Info().Uint64("new", db.manifest.active.Fid()).Msg("rotate wal")
 
 		// when the wal rotates, the hint file is generated in background
 		// don't need to care if it succeeds or not
 		// if it's unsuccessful, it will be cleaned up automatically
 		go func() {
 			fileSize, err := NewHintByWal(old)
-			if err == nil && fileSize != 0 {
+			if err == nil && fileSize > SuperBlockSize {
 				db.mu.Lock()
 				db.hintSizeCache[old.Fid()] = int64(fileSize)
 				db.mu.Unlock()
@@ -429,8 +475,10 @@ func (db *DBImpl) ensureRoomForWrite() error {
 	if db.manifest.FileSize() >= db.opts.ManifestMaxSize {
 		if err := db.manifest.RotateManifest(); err != nil {
 			db.bgErr = err
+			db.logger.Err(err).Msg("failed to rotate manifest")
 			return err
 		}
+		db.logger.Info().Uint64("new", db.manifest.fid).Msg("rotate manifest")
 	}
 
 	return nil
@@ -499,6 +547,8 @@ func (db *DBImpl) Close() {
 
 	_ = db.fileLock.Unlock()
 	db.fileLock.Close()
+
+	db.logger.Info().Msg("db closed")
 }
 
 func (db *DBImpl) Rand(upper uint64) uint64 {

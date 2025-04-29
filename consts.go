@@ -12,4 +12,8 @@ const (
 	DefaultCompactionPickerRatio = 0.4
 
 	DefaultRecordBufferSize = 64 * 1024 // 64KB
+
+	DefaultLogMaxSize = 20 // 20MB
+
+	DefaultLogFile = "db.log"
 )

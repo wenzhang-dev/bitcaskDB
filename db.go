@@ -55,7 +55,14 @@ type (
 )
 
 type Options struct {
-	Dir             string
+	Dir string
+
+	LogFile       string
+	LogDir        string
+	LogLevel      int8
+	LogMaxSize    uint64
+	LogMaxBackups uint64
+
 	WalMaxSize      uint64
 	ManifestMaxSize uint64
 
@@ -83,6 +90,18 @@ type Options struct {
 }
 
 func (o *Options) Init() {
+	if o.LogDir == "" {
+		o.LogDir = o.Dir
+	}
+
+	if o.LogFile == "" {
+		o.LogFile = DefaultLogFile
+	}
+
+	if o.LogMaxSize == 0 {
+		o.LogMaxSize = DefaultLogMaxSize
+	}
+
 	if o.CompactionPicker == nil {
 		o.CompactionPicker = DefaultCompactionPicker
 	}

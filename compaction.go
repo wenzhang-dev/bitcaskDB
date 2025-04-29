@@ -172,6 +172,8 @@ func (db *DBImpl) backgroundCompactionLocked(wals []uint64) {
 
 	db.compaction = compaction
 
+	db.logger.Info().Uints64("input wals", wals).Uint64("output wal", fid).Msg("new compaction")
+
 	// run compaction without any lock
 	go db.doCompaction(compaction)
 }
@@ -185,12 +187,15 @@ func (db *DBImpl) doCompaction(compaction *Compaction) {
 	}()
 
 	if err = db.doCompactionWork(compaction); err == nil {
+		db.logger.Info().Msg("compaction finished")
 		return
 	}
 
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	db.bgErr = err
+
+	db.logger.Err(err).Msg("failed compaction")
 }
 
 func (db *DBImpl) doCompactionWork(compaction *Compaction) error {
@@ -201,11 +206,15 @@ func (db *DBImpl) doCompactionWork(compaction *Compaction) error {
 		); err != nil {
 			return err
 		}
+
+		db.logger.Info().Uint64("wal", compaction.inputs[idx].Fid()).Msg("part compaction")
 	}
 
 	if err = compaction.Finalize(); err != nil {
 		return err
 	}
+
+	db.logger.Info().Msg("prepare to submit the compaction")
 
 	// here, we should update the manifest and index synchronously and atomicly
 	// otherwise, whether the index or manifest update first, the query will not find the
@@ -232,6 +241,7 @@ func (db *DBImpl) doCompactionWork(compaction *Compaction) error {
 			nextFid:    compaction.edit.nextFid,
 		}
 		txn.Apply(edit)
+		db.logger.Info().Msg("one phase: apply the edit")
 
 		// update the index without any lock and ignore any error
 		// FIXME: put operations may evict some keys, we should put it into an edit
@@ -239,6 +249,7 @@ func (db *DBImpl) doCompactionWork(compaction *Compaction) error {
 			_ = db.index.Put(record.ns, record.key, record.fid, record.off, record.size, nil)
 			return nil
 		})
+		db.logger.Info().Msg("one phase: gen hint wal")
 		return nil
 	}
 
@@ -253,6 +264,8 @@ func (db *DBImpl) doCompactionWork(compaction *Compaction) error {
 		if err := txn.Commit(edit); err != nil {
 			return err
 		}
+
+		db.logger.Info().Msg("two phase: commit the txn")
 
 		// clean un-used files
 		_ = db.manifest.CleanFiles(false)
@@ -377,6 +390,7 @@ func (db *DBImpl) reclaimDiskUsage(expect int64) {
 		return
 	}
 
+	db.logger.Info().Int64("expect", expect).Int64("usage", usage).Msg("reclaim disk usage")
 	if usage <= expect {
 		return
 	}
@@ -418,10 +432,15 @@ func (db *DBImpl) reclaimDiskUsage(expect int64) {
 		idx++
 	}
 
+	db.logger.Info().Uints64("wals", Map(deleteFiles, func(f LogFile) uint64 {
+		return f.fid
+	})).Msg("prepare to reclaim wals")
+
 	db.mu.Lock()
 
 	if len(deleteFiles) == 0 {
 		db.bgErr = ErrDiskOutOfLimit
+		db.logger.Err(db.bgErr).Msg("failed to reclaim disk usage")
 		return
 	}
 
@@ -432,7 +451,10 @@ func (db *DBImpl) reclaimDiskUsage(expect int64) {
 
 	if err = db.manifest.LogAndApply(edit); err != nil {
 		db.bgErr = errors.Join(err, ErrDiskOutOfLimit)
+		db.logger.Err(db.bgErr).Msg("failed to apply")
 	}
+
+	db.logger.Info().Msg("reclaim successfully")
 
 	// delete the related hint wals
 	for idx := range deleteFiles {
