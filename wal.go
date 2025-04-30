@@ -101,7 +101,7 @@ func LoadWal(path string, fid uint64) (*Wal, error) {
 	runners := NewRunner()
 	defer runners.Do()
 
-	file, err := os.OpenFile(path, os.O_RDWR, 0o644)
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_APPEND, 0o644)
 	if err != nil {
 		return nil, err
 	}

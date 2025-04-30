@@ -197,24 +197,41 @@ func TestWal_ReopenPersistence(t *testing.T) {
 
 	data := []byte("persistent data")
 	offset, err := wal.WriteRecord(data)
-	if err != nil {
-		t.Fatalf("Failed to write record: %v", err)
-	}
+	assert.Nil(t, err)
 	assert.Nil(t, wal.Flush())
 
 	// Close and reopen WAL
 	wal.Close()
 	wal, err = LoadWal(filename, 0)
-	if err != nil {
-		t.Fatalf("Failed to reopen WAL: %v", err)
-	}
+	assert.Nil(t, err)
+
+	// write one record
+	data1 := []byte("one record")
+	offset1, err := wal.WriteRecord(data1)
+	assert.Nil(t, err)
+	assert.Nil(t, wal.Flush())
+
+	// check
+	readData, err := wal.ReadRecord(offset, uint64(len(data)), true)
+	assert.Nil(t, err)
+	assert.Equal(t, readData, data)
+
+	readData, err = wal.ReadRecord(offset1, uint64(len(data1)), true)
+	assert.Nil(t, err)
+	assert.Equal(t, readData, data1)
+
+	// repeat check
+	wal.Close()
+	wal, err = LoadWal(filename, 0)
+	assert.Nil(t, err)
 
 	defer wal.Close()
 
-	readData, err := wal.ReadRecord(offset, uint64(len(data)), true)
-	if err != nil {
-		t.Fatalf("Failed to read record after reopening: %v", err)
-	}
-
+	readData, err = wal.ReadRecord(offset, uint64(len(data)), true)
+	assert.Nil(t, err)
 	assert.Equal(t, readData, data)
+
+	readData, err = wal.ReadRecord(offset1, uint64(len(data1)), true)
+	assert.Nil(t, err)
+	assert.Equal(t, readData, data1)
 }
