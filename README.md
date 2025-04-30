@@ -139,6 +139,11 @@ func main() {
 }
 ```
 
+If you want to simply use a database CRUD http server, consider this [repository](https://github.com/wenzhang-dev/bitcaskDB-server).
+
+The http server runs as a docker container. By the way, the overhead of reading and writing bitcaskDB is negligible compared to the overhead of network communication.
+
+
 # Benchmark
 
 Here are the benchmarks for reading and writing 4KB:

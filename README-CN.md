@@ -129,6 +129,11 @@ func main() {
 }
 ```
 
+如果你想简单使用一个 database CRUD http server，可以考虑这个[仓库](https://github.com/wenzhang-dev/bitcaskDB-server)。
+
+http server 以 docker 容器运行。顺便说，读写 bitcaskDB 的开销，相比网络通信的开销而言，可以忽略不计。
+
+
 # 性能测试
 
 读写 4KB 的压测报告如下：
