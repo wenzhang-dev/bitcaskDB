@@ -32,18 +32,23 @@ func newDB(b *testing.B) {
 	_ = os.MkdirAll(dir, os.ModePerm)
 
 	opts := &bitcask.Options{
-		Dir:                       dir,
-		WalMaxSize:                1024 * 1024 * 1024, // 1GB
-		ManifestMaxSize:           10 * 1024 * 1024,   // 10MB
-		IndexCapacity:             10000000,           // 10 million
-		IndexLimited:              8000000,
-		IndexEvictionPoolCapacity: 64,
-		IndexSampleKeys:           5,
-		CompactionPicker:          nil, // default picker
-		CompactionFilter:          nil, // default filter
-		NsSize:                    bitcask.DefaultNsSize,
-		EtagSize:                  bitcask.DefaultEtagSize,
-		DisableCompaction:         true,
+		Dir:                            dir,
+		WalMaxSize:                     1024 * 1024 * 1024, // 1GB
+		ManifestMaxSize:                10 * 1024 * 1024,   // 10MB
+		IndexCapacity:                  10000000,           // 10 million
+		IndexLimited:                   8000000,
+		IndexEvictionPoolCapacity:      64,
+		IndexSampleKeys:                5,
+		BlockCacheCapacity:             8192, // 256MB
+		BlockCacheLimited:              8192,
+		BlockCacheSampleKeys:           5,
+		BlockCacheEvictionPoolCapacity: 32,
+		BlockReaderConcurrent:          64,
+		CompactionPicker:               nil, // default picker
+		CompactionFilter:               nil, // default filter
+		NsSize:                         bitcask.DefaultNsSize,
+		EtagSize:                       bitcask.DefaultEtagSize,
+		DisableCompaction:              true,
 	}
 
 	var err error
@@ -52,13 +57,13 @@ func newDB(b *testing.B) {
 }
 
 func BenchmarkPutGet(b *testing.B) {
-	b.Run("put4K", benchmarkPut)
-	b.Run("batchPut4K", benchmarkBatchPut)
-	b.Run("get4K", benchmarkGet)
-
-	b.Run("concurrentGet4K", benchmarkConcurrentGet)
-	b.Run("concurrentPut4K", benchmarkConcurrentPut)
-	b.Run("concurrentBatchPut4K", benchmarkConcurrentBatchPut)
+	b.Run("put_4K", benchmarkPut)
+	b.Run("batchPut_4K", benchmarkBatchPut)
+	b.Run("get_4K", benchmarkGet)
+	b.Run("concurrentGet_4K", benchmarkConcurrentGet)
+	b.Run("concurrentGetV2_4K", benchmarkConcurrentGetV2)
+	b.Run("concurrentPut_4K", benchmarkConcurrentPut)
+	b.Run("concurrentBatchPut_4K", benchmarkConcurrentBatchPut)
 }
 
 func benchmarkPut(b *testing.B) {
@@ -130,7 +135,7 @@ func getPrepare(b *testing.B) {
 	wOpts := &bitcask.WriteOptions{}
 
 	batch := bitcask.NewBatch()
-	for i := 0; i < 100001; i++ {
+	for i := 0; i < 200001; i++ {
 		batch.Put(ns[:], genTestKey(i), bin4KB, meta)
 
 		if i%BatchSize == 0 {
@@ -172,7 +177,29 @@ func benchmarkConcurrentGet(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		iteration := 0
 		for pb.Next() {
-			_, _, err := db.Get(ns[:], genTestKey(iteration%100000), rOpts)
+			_, _, err := db.Get(ns[:], genTestKey(iteration%200000), rOpts)
+			assert.Nil(b, err)
+
+			iteration++
+		}
+	})
+}
+
+func benchmarkConcurrentGetV2(b *testing.B) {
+	newDB(b)
+	defer db.Close()
+
+	getPrepare(b)
+
+	rOpts := &bitcask.ReadOptions{}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	b.RunParallel(func(pb *testing.PB) {
+		iteration := 0
+		for pb.Next() {
+			_, _, err := db.GetV2(ns[:], genTestKey(iteration%200000), rOpts)
 			assert.Nil(b, err)
 
 			iteration++

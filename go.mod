@@ -2,8 +2,11 @@ module github.com/wenzhang-dev/bitcaskDB
 
 go 1.23.0
 
+toolchain go1.24.2
+
 require (
 	github.com/gofrs/flock v0.12.1
+	github.com/iceber/iouring-go v0.0.0-00010101000000-000000000000
 	github.com/rs/zerolog v1.34.0
 	github.com/spaolacci/murmur3 v1.1.0
 	github.com/stretchr/testify v1.9.0
@@ -22,3 +25,5 @@ require (
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/iceber/iouring-go => github.com/royalcat/iouring-go v0.0.0-20240925200811-286062ac1b23

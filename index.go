@@ -8,13 +8,8 @@ import (
 	"github.com/spaolacci/murmur3"
 )
 
-type IndexHelper interface {
-	Rand(uint64) uint64
-	WallTime() time.Time
-}
-
 type IndexOperator struct {
-	helper IndexHelper
+	helper MapOperatorBase
 }
 
 func (optr *IndexOperator) Hash(key *[]byte) uint64 {
@@ -52,7 +47,7 @@ type IndexOptions struct {
 	EvictionPoolCapacity uint64
 	SampleKeys           uint64
 
-	Helper IndexHelper
+	Helper MapOperatorBase
 }
 
 // TODO: batch optimization

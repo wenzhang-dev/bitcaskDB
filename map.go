@@ -20,18 +20,22 @@ var ErrMapOptions = errors.New("invalid map options")
 // - for linked-base hashtable, memory overhead is larger because of more pointers,
 //   which is less cpu cache-friendly
 
-type MapOperator[K any] interface {
-	// used to map key to slot
-	Hash(key *K) uint64
-
-	// used to compare key equalization
-	Equals(lhs, rhs *K) bool
-
+type MapOperatorBase interface {
 	// used to generate random slot
 	Rand(uint64) uint64
 
 	// second level clock
 	WallTime() time.Time
+}
+
+type MapOperator[K any] interface {
+	MapOperatorBase
+
+	// used to map key to slot
+	Hash(key *K) uint64
+
+	// used to compare key equalization
+	Equals(lhs, rhs *K) bool
 }
 
 type Bucket[K any, V any] struct {

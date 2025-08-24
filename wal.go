@@ -15,6 +15,9 @@ import (
 var (
 	ErrWalIteratorEOF       = errors.New("eof")
 	ErrWalMismatchCRC       = errors.New("CRC mismatch, corrupted data")
+	ErrWalMismatchSize      = errors.New("size mismatch, corrupted data")
+	ErrWalCorruptedData     = errors.New("corrupted data")
+	ErrWalIncompleteRecord  = errors.New("incomplete record")
 	ErrWalMismatchMagic     = errors.New("magic number mismatch")
 	ErrWalMismatchBlockSize = errors.New("block size mismatch")
 	ErrWalUnknownRecordType = errors.New("invalid record type")
@@ -53,6 +56,121 @@ const (
 	SuperBlockSize        = 40         // 8 + 8 + 4 + 8 + 8 + 4 bytes
 	SuperBlockCRC32Offset = SuperBlockSize - 4
 )
+
+// calculate the physical footprint of the record based on its actual size and offset
+func WalRecordSize(offset, size uint64) uint64 {
+	left := size
+	phySize := uint64(0)
+
+	// skip the super block
+	offset -= SuperBlockSize
+
+	for left > 0 {
+		leftover := BlockSize - (offset % BlockSize)
+		if leftover < RecordHeaderSize {
+			phySize += leftover
+			offset += leftover
+			leftover = BlockSize
+		}
+
+		avail := leftover - RecordHeaderSize
+		fragmentLength := min(left, avail)
+
+		phySize += (RecordHeaderSize + fragmentLength)
+		offset += (RecordHeaderSize + fragmentLength)
+
+		left -= fragmentLength
+	}
+
+	return phySize
+}
+
+func WalBlockIndexRange(offset, size uint64) (firstBlkIdx, firstBlkOffset, blkNum uint64) {
+	recordSize := WalRecordSize(offset, size)
+
+	firstBlkIdx = (offset - SuperBlockSize) / BlockSize
+	firstBlkOffset = firstBlkIdx*BlockSize + SuperBlockSize
+
+	lastBlkIdx := (offset - SuperBlockSize + recordSize) / BlockSize
+	blkNum = lastBlkIdx - firstBlkIdx + 1
+	return
+}
+
+func WalBlockOffset(blkIdx uint64) (off uint64) {
+	off = blkIdx*BlockSize + SuperBlockSize
+	return
+}
+
+func WalBlockIdx(offset uint64) (blkIdx uint64) {
+	blkIdx = (offset - SuperBlockSize) / BlockSize
+	return
+}
+
+// parse the record from the given buffers
+//
+// there are two sources of `blks`.
+//   - one is created from block cache. This part of cache maybe reused after cache eviction.
+//     so it's nessary to new a buffer for the return binary record, and the `blks` has one
+//     or more blocks
+//   - the second is from pread-at-once. in this case, the value is usually large and contains
+//     multiple data blocks. therefore, the return binary record cannot be directly a slice of
+//     buffer and the `blks` has only one block
+//
+// the `size` means the number of bytes of record
+// the `blkOff` means the start offset of actual data in blks
+func WalParseRecord(size uint64, blkOff uint64, blks [][]byte, verifyChecksum bool) ([]byte, error) {
+	record := make([]byte, 0, size)
+
+	blkSize := uint64(len(blks[0]))
+
+	// iterate all input blocks
+	for i := 0; i < len(blks); i++ {
+		// iterate record
+		for {
+			header := blks[i][blkOff : blkOff+RecordHeaderSize]
+			blkOff += RecordHeaderSize
+
+			crc := binary.LittleEndian.Uint32(header[0:])
+			length := uint64(binary.LittleEndian.Uint16(header[4:]))
+			recordType := header[6]
+
+			// avoid the corrupted data triggering out of range
+			if length > blkSize-blkOff {
+				return nil, ErrWalCorruptedData
+			}
+
+			data := blks[i][blkOff : blkOff+length]
+			blkOff += length
+
+			if verifyChecksum && ComputeCRC32(data) != crc {
+				return nil, ErrWalMismatchCRC
+			}
+
+			record = append(record, data...)
+
+			switch recordType {
+			case RecordFull, RecordLast:
+				if len(record) != int(size) {
+					return nil, ErrWalMismatchSize
+				}
+				return record, nil
+			case RecordFirst, RecordMiddle:
+				// Continue reading next chunk
+			default:
+				return nil, ErrWalUnknownRecordType
+			}
+
+			// blks[i][blkOff:] has no space to store more records
+			leftover := blkSize - blkOff
+			if leftover <= RecordHeaderSize {
+				blkOff = 0
+				break
+			}
+		}
+	}
+
+	return nil, ErrWalIncompleteRecord
+}
 
 // it's not thread safe
 // usually, only one writer can operate the Wal. no race condition
@@ -316,6 +434,10 @@ func (wal *Wal) Fid() uint64 {
 	return wal.fid
 }
 
+func (wal *Wal) Fd() int {
+	return int(wal.fp.Fd())
+}
+
 // return the current file size
 func (wal *Wal) Size() uint64 {
 	return wal.size
@@ -430,87 +552,22 @@ func (wal *Wal) WriteRecord(record []byte) (uint64, error) {
 	return offset, nil
 }
 
-// calculate the physical footprint of the record based on its actual size and offset
-func (wal *Wal) recordPhysicalSize(offset, size uint64) uint64 {
-	left := size
-	phySize := uint64(0)
-
-	// skip the super block
-	offset -= SuperBlockSize
-
-	for left > 0 {
-		leftover := BlockSize - (offset % BlockSize)
-		if leftover < RecordHeaderSize {
-			phySize += leftover
-			offset += leftover
-			leftover = BlockSize
-		}
-
-		avail := leftover - RecordHeaderSize
-		fragmentLength := min(left, avail)
-
-		phySize += (RecordHeaderSize + fragmentLength)
-		offset += (RecordHeaderSize + fragmentLength)
-
-		left -= fragmentLength
-	}
-
-	return phySize
-}
-
 // read one record from specifc offset and size
 func (wal *Wal) ReadRecord(offset, size uint64, verifyChecksum bool) (record []byte, err error) {
 	if !wal.Valid() {
 		return nil, ErrWalUnavailable
 	}
 
-	phySize := wal.recordPhysicalSize(offset, size)
-	if offset+phySize > wal.size {
+	recordSize := WalRecordSize(offset, size)
+	if offset+recordSize > wal.size {
 		return nil, errors.New("read beyond file size")
 	}
 
-	buffer := make([]byte, phySize)
+	buffer := make([]byte, recordSize)
 	// read all related data using only one disk read operation
-	if err = PreadFull(int(wal.fp.Fd()), buffer, int64(offset)); err != nil {
+	if err = PreadFull(wal.Fd(), buffer, int64(offset)); err != nil {
 		return
 	}
 
-	recordOff := 0
-	expectedOff := 0
-	record = make([]byte, size)
-	for {
-		header := buffer[expectedOff : expectedOff+RecordHeaderSize]
-		expectedOff += RecordHeaderSize
-
-		crc := binary.LittleEndian.Uint32(header[0:])
-		length := int(binary.LittleEndian.Uint16(header[4:]))
-		recordType := header[6]
-
-		// avoid the the corrupted data triggering out of range
-		// small probability: use crc32 checksum
-		length = min(length, int(phySize)-expectedOff)
-
-		data := buffer[expectedOff : expectedOff+length]
-		expectedOff += length
-
-		if verifyChecksum && ComputeCRC32(data) != crc {
-			return nil, ErrWalMismatchCRC
-		}
-
-		recordOff += copy(record[recordOff:], data)
-
-		switch recordType {
-		case RecordFull:
-			if recordOff != int(size) {
-				return nil, errors.New("size mismatch, corrupted data")
-			}
-			return
-		case RecordFirst, RecordMiddle:
-			// Continue reading next chunk
-		case RecordLast:
-			return
-		default:
-			return nil, ErrWalUnknownRecordType
-		}
-	}
+	return WalParseRecord(size, 0, [][]byte{buffer}, verifyChecksum)
 }

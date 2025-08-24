@@ -71,6 +71,13 @@ type Options struct {
 	IndexEvictionPoolCapacity uint64
 	IndexSampleKeys           uint64
 
+	BlockCacheCapacity             uint64
+	BlockCacheLimited              uint64
+	BlockCacheEvictionPoolCapacity uint64
+	BlockCacheSampleKeys           uint64
+
+	BlockReaderConcurrent uint64
+
 	CompactionPicker CompactionPicker
 	CompactionFilter CompactionFilter
 
