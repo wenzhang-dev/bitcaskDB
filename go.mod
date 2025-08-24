@@ -6,7 +6,7 @@ toolchain go1.24.2
 
 require (
 	github.com/gofrs/flock v0.12.1
-	github.com/iceber/iouring-go v0.0.0-00010101000000-000000000000
+	github.com/iceber/iouring-go v0.0.0
 	github.com/rs/zerolog v1.34.0
 	github.com/spaolacci/murmur3 v1.1.0
 	github.com/stretchr/testify v1.9.0

@@ -31,6 +31,7 @@ const (
 
 var (
 	ErrKeyNotFound    = errors.New("key not found")
+	ErrIncompleteRead = errors.New("incomplete read")
 	ErrKeySoftDeleted = errors.New("key soft delete")
 )
 

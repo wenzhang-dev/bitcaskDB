@@ -686,7 +686,7 @@ func (db *DBImpl) setReaderResult(wal *Wal, reader *reader, reqs block_reader.Re
 		offset := WalBlockOffset(reader.firstBlkIdx + uint64(idx))
 		req, found := reqs.BinarySearch(reader.fid, offset)
 		if !found {
-			reader.err = ErrKeyNotFound
+			reader.err = errors.Join(ErrIncompleteRead, ErrKeyNotFound)
 			return
 		}
 
