@@ -769,7 +769,12 @@ func (db *DBImpl) GetV2(ns, key []byte, opts *ReadOptions) ([]byte, *Meta, error
 		return db.readRecord(wal, off, sz, verifyChecksum)
 	}
 
-	// small value
+    // small value
+    if sz <= BlockSize / 8 {
+        return db.readRecord(wal, off, sz, verifyChecksum)
+    }
+
+	// medium value
 	reader := db.newReader(wal.Fd(), fid, off, sz, blkNum, firstBlkIdx, firstBlkOff)
 	defer db.readerPool.Put(reader)
 
