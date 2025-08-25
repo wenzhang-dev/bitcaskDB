@@ -37,9 +37,9 @@ type Requests []*Request
 
 func (r Requests) Sort() {
 	slices.SortFunc(r, func(a, b *Request) int {
-		if a.Fd < b.Fd {
+		if a.Fid < b.Fid {
 			return -1
-		} else if a.Fd > b.Fd {
+		} else if a.Fid > b.Fid {
 			return 1
 		}
 
